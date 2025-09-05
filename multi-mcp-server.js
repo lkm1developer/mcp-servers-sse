@@ -4,9 +4,9 @@ import express from 'express';
 import cors from 'cors';
 import jwt from 'jsonwebtoken';
 import { randomUUID } from 'node:crypto';
-import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
-import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
-import { isInitializeRequest } from '@modelcontextprotocol/sdk/types.js';
+import { Server } from '@modelcontextprotocol/sdk/server/index.js';
+import { SSEServerTransport } from '@modelcontextprotocol/sdk/server/sse.js';
+import { InitializeRequestSchema, ListToolsRequestSchema, CallToolRequestSchema } from '@modelcontextprotocol/sdk/types.js';
 import fs from 'fs';
 import path from 'path';
 
@@ -45,10 +45,15 @@ function log(serverName, message, data = null) {
   }
 }
 
+// Helper function to check if request is initialize
+function isInitializeRequest(body) {
+  return body && body.method === 'initialize';
+}
+
 // Server registry to manage multiple MCP servers
 class MCPServerManager {
   constructor() {
-    this.servers = new Map(); // serverName -> { transports: Map, mcpServer: McpServer, config: Object }
+    this.servers = new Map(); // serverName -> { transports: Map, mcpServer: Server, config: Object }
   }
 
   // Initialize all servers from config
@@ -121,47 +126,56 @@ class MCPServerManager {
     }
     
     // Create MCP server instance
-    const mcpServer = new McpServer({
+    const mcpServer = new Server({
       name: serverConfig.name,
       version: serverConfig.version
+    }, {
+      capabilities: {
+        tools: {},
+      }
     });
     
-    // Register tools
-    for (const toolDef of toolsDefinitions) {
-      mcpServer.registerTool(
-        toolDef.name,
-        {
-          title: toolDef.title || toolDef.name,
+    // Register tool handlers using the Server class API
+    
+    mcpServer.setRequestHandler(ListToolsRequestSchema, async () => {
+      return {
+        tools: toolsDefinitions.map(toolDef => ({
+          name: toolDef.name,
           description: toolDef.description,
           inputSchema: toolDef.inputSchema
-        },
-        async (args, context) => {
-          log(serverName, `Processing tool: ${toolDef.name}`);
-          
-          const handler = toolHandlers[toolDef.name];
-          if (!handler) {
-            log(serverName, `Tool handler not found: ${toolDef.name}`);
-            throw new Error(`Unknown tool: ${toolDef.name}`);
-          }
-          
-          try {
-            // Get API key from current transport/session
-            const currentTransport = context?.transport;
-            const userApiKey = currentTransport?.userApiKey;
-            const userId = currentTransport?.userId;
-            
-            log(serverName, `Tool executing with context`, { hasApiKey: !!userApiKey, userId });
-            
-            const result = await handler(args, userApiKey, userId);
-            log(serverName, `Tool completed: ${toolDef.name}`, { success: true });
-            return result;
-          } catch (error) {
-            log(serverName, `Tool error: ${toolDef.name}`, { error: error.message });
-            throw error;
-          }
-        }
-      );
-    }
+        }))
+      };
+    });
+
+    mcpServer.setRequestHandler(CallToolRequestSchema, async (request) => {
+      const { name, arguments: args } = request.params;
+      
+      log(serverName, `Processing tool: ${name}`);
+      
+      const handler = toolHandlers[name];
+      if (!handler) {
+        log(serverName, `Tool handler not found: ${name}`);
+        throw new Error(`Unknown tool: ${name}`);
+      }
+      
+      try {
+        // Get API key from session data stored in serverData
+        const serverData = serverManager.getServer(serverName);
+        const sessionId = request.meta?.sessionId; // This might need adjustment based on actual session handling
+        const transport = sessionId ? serverData.transports.get(sessionId) : null;
+        const userApiKey = transport?.userApiKey;
+        const userId = transport?.userId;
+        
+        log(serverName, `Tool executing with context`, { hasApiKey: !!userApiKey, userId });
+        
+        const result = await handler(args, userApiKey, userId);
+        log(serverName, `Tool completed: ${name}`, { success: true });
+        return result;
+      } catch (error) {
+        log(serverName, `Tool error: ${name}`, { error: error.message });
+        throw error;
+      }
+    });
     
     // Store server data
     this.servers.set(serverName, {
@@ -410,17 +424,15 @@ app.post('/:serverName/mcp', validateMCPRequest, async (req, res) => {
         }
 
         // Create new transport and connect to existing MCP server
-        transport = new StreamableHTTPServerTransport({
-          sessionIdGenerator: () => randomUUID(),
-          onsessioninitialized: (sessionId) => {
-            // Store session with user's API key
-            transport.userApiKey = userApiKey;
-            transport.userId = userId;
-            serverData.transports.set(sessionId, transport);
-            log(serverName, `Session initialized: ${sessionId}`, { userId, hasApiKey: !!userApiKey });
-          },
-          enableDnsRebindingProtection: config.global.enable_dns_rebinding_protection || false
-        });
+        transport = new SSEServerTransport();
+        const sessionId = randomUUID();
+        
+        // Store session with user's API key
+        transport.userApiKey = userApiKey;
+        transport.userId = userId;
+        transport.sessionId = sessionId;
+        serverData.transports.set(sessionId, transport);
+        log(serverName, `Session initialized: ${sessionId}`, { userId, hasApiKey: !!userApiKey });
 
         // Clean up transport when closed
         transport.onclose = () => {
