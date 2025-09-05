@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Read(/E:\\mk-mcp\\server/**)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}

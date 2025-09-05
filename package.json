@@ -1,0 +1,27 @@
+{
+  "name": "multi-mcp-server",
+  "version": "1.0.0",
+  "description": "Multi-MCP server with SSE protocol, route-based hosting, and JWT authentication",
+  "main": "multi-mcp-server.js",
+  "type": "module",
+  "scripts": {
+    "start": "node multi-mcp-server.js",
+    "dev": "node --watch multi-mcp-server.js"
+  },
+  "dependencies": {
+    "express": "^4.19.2",
+    "cors": "^2.8.5",
+    "jsonwebtoken": "^9.0.2",
+    "@modelcontextprotocol/sdk": "^0.4.0"
+  },
+  "keywords": [
+    "mcp",
+    "sse",
+    "server-sent-events",
+    "express",
+    "jwt",
+    "multi-tenant"
+  ],
+  "author": "Multi-MCP Server",
+  "license": "MIT"
+}

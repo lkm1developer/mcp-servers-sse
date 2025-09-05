@@ -1,0 +1,36 @@
+{
+  "servers": {
+    "calculator": {
+      "name": "Calculator MCP Server",
+      "version": "1.0.0",
+      "description": "A server that provides calculator functionality",
+      "directory": "./servers/calculator",
+      "enabled": true,
+      "entryFile": "index.js"
+    },
+    "utility": {
+      "name": "Utility MCP Server", 
+      "version": "1.0.0",
+      "description": "A server that provides utility functions",
+      "directory": "./servers/utility",
+      "enabled": true,
+      "entryFile": "index.js"
+    },
+    "file-ops": {
+      "name": "File Operations MCP Server",
+      "version": "1.0.0", 
+      "description": "A server that provides file operation tools",
+      "directory": "./servers/file-ops",
+      "enabled": false,
+      "entryFile": "index.js"
+    }
+  },
+  "global": {
+    "jwt_secret": "your-super-secret-jwt-key",
+    "port": 8080,
+    "session_cleanup_interval": 300000,
+    "log_file": "multi-mcp-debug.log",
+    "enable_dns_rebinding_protection": false,
+    "supported_protocol_versions": ["2025-06-18", "2024-11-05"]
+  }
+}
