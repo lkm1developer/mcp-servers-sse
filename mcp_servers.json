@@ -28,16 +28,6 @@
       "can_clone": true
     },
     {
-      "name": "github",
-      "status": "official",
-      "official_repo": "https://github.com/github/github-mcp-server",
-      "description": "Official GitHub MCP server by GitHub",
-      "provider": "GitHub",
-      "your_repo": null,
-      "can_clone": true,
-      "note": "New official server you might want to add"
-    },
-    {
       "name": "smartlead",
       "status": "no_open_source",
       "official_repo": "https://mcp.smartlead.ai/sse (hosted only)",

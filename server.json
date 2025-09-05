@@ -1,13 +1,5 @@
 {
   "servers": {
-    "utility": {
-      "name": "Utility MCP Server", 
-      "version": "1.0.0",
-      "description": "A server that provides utility functions",
-      "directory": "./servers/utility",
-      "enabled": true,
-      "entryFile": "index.js"
-    },
     "firecrawl": {
       "name": "Firecrawl MCP Server",
       "version": "1.3.2",
@@ -25,6 +17,123 @@
       "enabled": true,
       "entryFile": "index.js",
       "apiKeyParam": "TAVILY_API_KEY"
+    },
+    "hubspot": {
+      "name": "HubSpot MCP Server",
+      "version": "1.0.0",
+      "description": "HubSpot CRM integration for contacts, companies, and engagement management",
+      "directory": "./servers/hubspot",
+      "enabled": true,
+      "entryFile": "adapter.js",
+      "apiKeyParam": "HUBSPOT_ACCESS_TOKEN"
+    },
+    "apollo": {
+      "name": "Apollo.io MCP Server", 
+      "version": "1.0.0",
+      "description": "Apollo.io integration for people and organization search, enrichment, and data discovery",
+      "directory": "./servers/apollo",
+      "enabled": true,
+      "entryFile": "adapter.js",
+      "apiKeyParam": "APOLLO_API_KEY"
+    },
+    "hunter": {
+      "name": "Hunter.io MCP Server",
+      "version": "1.0.0",
+      "description": "Hunter.io integration for email finding, verification, and domain search",
+      "directory": "./servers/hunter",
+      "enabled": true,
+      "entryFile": "adapter.js",
+      "apiKeyParam": "HUNTER_API_KEY"
+    },
+    "prospeo": {
+      "name": "Prospeo MCP Server",
+      "version": "1.0.0",
+      "description": "Prospeo integration for email finding, mobile number discovery, and LinkedIn enrichment",
+      "directory": "./servers/prospeo",
+      "enabled": true,
+      "entryFile": "adapter.js",
+      "apiKeyParam": "PROSPEO_API_KEY"
+    },
+    "builtwith": {
+      "name": "BuiltWith MCP Server",
+      "version": "1.0.0",
+      "description": "BuiltWith integration for website technology analysis and trends",
+      "directory": "./servers/builtwith",
+      "enabled": true,
+      "entryFile": "adapter.js",
+      "apiKeyParam": "BUILTWITH_API_KEY"
+    },
+    "neverbounce": {
+      "name": "NeverBounce MCP Server",
+      "version": "1.0.0",
+      "description": "NeverBounce integration for email verification and bulk processing",
+      "directory": "./servers/neverbounce",
+      "enabled": true,
+      "entryFile": "adapter.js",
+      "apiKeyParam": "NEVERBOUNCE_API_KEY"
+    },
+    "rocketreach": {
+      "name": "RocketReach MCP Server",
+      "version": "1.0.0",
+      "description": "RocketReach integration for contact and company data discovery",
+      "directory": "./servers/rocketreach",
+      "enabled": true,
+      "entryFile": "adapter.js",
+      "apiKeyParam": "ROCKETREACH_API_KEY"
+    },
+    "findymail": {
+      "name": "FindyMail MCP Server",
+      "version": "1.0.0",
+      "description": "FindyMail integration for email finding, verification, and contact enrichment",
+      "directory": "./servers/findymail",
+      "enabled": true,
+      "entryFile": "adapter.js",
+      "apiKeyParam": "FINDYMAIL_API_KEY"
+    },
+    "ocean": {
+      "name": "Ocean.io MCP Server",
+      "version": "1.0.0",
+      "description": "Ocean.io integration for people and company search and enrichment",
+      "directory": "./servers/ocean",
+      "enabled": true,
+      "entryFile": "adapter.js",
+      "apiKeyParam": "OCEAN_API_KEY"
+    },
+    "icypeas": {
+      "name": "IcyPeas MCP Server",
+      "version": "1.0.0",
+      "description": "IcyPeas integration for email finding and verification",
+      "directory": "./servers/icypeas",
+      "enabled": true,
+      "entryFile": "adapter.js",
+      "apiKeyParam": "ICYPEAS_API_KEY"
+    },
+    "googlesheets": {
+      "name": "Google Sheets MCP Server",
+      "version": "1.0.0",
+      "description": "Google Sheets integration for spreadsheet creation, editing, and management",
+      "directory": "./servers/googlesheets",
+      "enabled": true,
+      "entryFile": "adapter.js",
+      "apiKeyParam": "GOOGLE_SHEETS_API_KEY"
+    },
+    "googledocs": {
+      "name": "Google Docs MCP Server",
+      "version": "1.0.0",
+      "description": "Google Docs integration for document creation, editing, and management",
+      "directory": "./servers/googledocs",
+      "enabled": true,
+      "entryFile": "adapter.js",
+      "apiKeyParam": "GOOGLE_DOCS_API_KEY"
+    },
+    "hatch": {
+      "name": "Hatch MCP Server",
+      "version": "1.0.0",
+      "description": "Hatch integration for contact discovery, verification, and company enrichment",
+      "directory": "./servers/hatch",
+      "enabled": true,
+      "entryFile": "adapter.js",
+      "apiKeyParam": "HATCH_API_KEY"
     }
   },
   "global": {

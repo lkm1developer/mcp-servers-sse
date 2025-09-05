@@ -1,7 +1,10 @@
 {
   "permissions": {
     "allow": [
-      "Read(/E:\\mk-mcp\\server/**)"
+      "Read(/E:\\mk-mcp\\server/**)",
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:raw.githubusercontent.com)",
+      "WebFetch(domain:api.github.com)"
     ],
     "deny": [],
     "ask": []

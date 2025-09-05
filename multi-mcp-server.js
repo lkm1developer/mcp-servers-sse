@@ -614,6 +614,70 @@ app.delete('/:serverName/mcp', validateMCPRequest, async (req, res) => {
   }
 });
 
+// Catch-all route to log all unmatched requests
+app.all('*', (req, res) => {
+  const requestDetails = {
+    endpoint: 'catch-all',
+    method: req.method,
+    originalUrl: req.originalUrl,
+    path: req.path,
+    params: req.params,
+    query: req.query,
+    headers: Object.keys(req.headers).reduce((filtered, key) => {
+      // Include important headers but filter out sensitive ones
+      if (!key.toLowerCase().includes('authorization') && !key.toLowerCase().includes('cookie')) {
+        filtered[key] = req.headers[key];
+      } else {
+        filtered[key] = '[REDACTED]';
+      }
+      return filtered;
+    }, {}),
+    body: req.body ? (typeof req.body === 'string' ? req.body.substring(0, 500) : JSON.stringify(req.body).substring(0, 500)) : null,
+    ip: req.ip || req.connection.remoteAddress,
+    userAgent: req.get('User-Agent') || 'unknown'
+  };
+
+  logRequest(req, requestDetails);
+  
+  log('CATCH-ALL', `Unmatched request: ${req.method} ${req.originalUrl}`, {
+    ...requestDetails,
+    timestamp: new Date().toISOString(),
+    status: 'no-match'
+  });
+
+  // Return appropriate response based on request
+  if (req.path.includes('/mcp')) {
+    // MCP-related request that didn't match server pattern
+    res.status(404).json({
+      jsonrpc: '2.0',
+      id: req.body?.id || null,
+      error: { 
+        code: -32001, 
+        message: 'MCP endpoint not found',
+        data: {
+          availableServers: serverManager.getAllServers().map(s => s.name),
+          requestedPath: req.path,
+          expectedFormat: '/{serverName}/mcp'
+        }
+      }
+    });
+  } else {
+    // General API request
+    res.status(404).json({
+      error: 'Endpoint not found',
+      message: `The requested endpoint ${req.method} ${req.originalUrl} does not exist`,
+      availableEndpoints: [
+        'GET /health - Health check',
+        'GET /servers - List all servers',
+        'POST /{serverName}/mcp - MCP server interaction',
+        'GET /{serverName}/mcp - MCP SSE stream',
+        'DELETE /{serverName}/mcp - Terminate MCP session'
+      ],
+      timestamp: new Date().toISOString()
+    });
+  }
+});
+
 // Cleanup inactive sessions
 setInterval(() => {
   let totalCleaned = 0;
