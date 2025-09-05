@@ -1,13 +1,5 @@
 {
   "servers": {
-    "calculator": {
-      "name": "Calculator MCP Server",
-      "version": "1.0.0",
-      "description": "A server that provides calculator functionality",
-      "directory": "./servers/calculator",
-      "enabled": true,
-      "entryFile": "index.js"
-    },
     "utility": {
       "name": "Utility MCP Server", 
       "version": "1.0.0",
@@ -16,13 +8,23 @@
       "enabled": true,
       "entryFile": "index.js"
     },
-    "file-ops": {
-      "name": "File Operations MCP Server",
-      "version": "1.0.0", 
-      "description": "A server that provides file operation tools",
-      "directory": "./servers/file-ops",
-      "enabled": false,
-      "entryFile": "index.js"
+    "firecrawl": {
+      "name": "Firecrawl MCP Server",
+      "version": "1.3.2",
+      "description": "Web scraping and crawling server using Firecrawl API",
+      "directory": "./servers/firecrawl",
+      "enabled": true,
+      "entryFile": "index.js",
+      "apiKeyParam": "FIRECRAWL_API_KEY"
+    },
+    "tavily": {
+      "name": "Tavily MCP Server",
+      "version": "0.2.9",
+      "description": "AI-powered web search, extraction, crawling and mapping using Tavily API",
+      "directory": "./servers/tavily",
+      "enabled": true,
+      "entryFile": "index.js",
+      "apiKeyParam": "TAVILY_API_KEY"
     }
   },
   "global": {

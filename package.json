@@ -12,7 +12,9 @@
     "express": "^4.19.2",
     "cors": "^2.8.5",
     "jsonwebtoken": "^9.0.2",
-    "@modelcontextprotocol/sdk": "^0.4.0"
+    "@modelcontextprotocol/sdk": "^0.4.0",
+    "@mendable/firecrawl-js": "^1.3.2",
+    "axios": "^1.6.0"
   },
   "keywords": [
     "mcp",

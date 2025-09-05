@@ -91,12 +91,33 @@ class MCPServerManager {
       throw new Error(`Entry file not found: ${entryFile}`);
     }
     
-    // Dynamically import the server module
-    const serverModule = await import(`file://${entryFile}`);
-    const { toolsDefinitions, toolHandlers } = serverModule;
+    // Dynamically import the server module with cache busting
+    let toolsDefinitions, toolHandlers;
+    
+    try {
+      const serverModule = await import(`file://${entryFile}?t=${Date.now()}`);
+      
+      if (serverModule.toolsDefinitions && serverModule.toolHandlers) {
+        // New format - direct export
+        toolsDefinitions = serverModule.toolsDefinitions;
+        toolHandlers = serverModule.toolHandlers;
+        log('MANAGER', `Server ${serverName} loaded in standard format`);
+      } else if (serverModule.createServerAdapter) {
+        // Adapter format - call the adapter function
+        const adapter = await serverModule.createServerAdapter(serverDir, serverConfig.apiKeyParam);
+        toolsDefinitions = adapter.toolsDefinitions;
+        toolHandlers = adapter.toolHandlers;
+        log('MANAGER', `Server ${serverName} loaded via adapter`);
+      } else {
+        throw new Error(`Server ${serverName} must export toolsDefinitions and toolHandlers, or provide createServerAdapter function`);
+      }
+    } catch (importError) {
+      log('MANAGER', `Failed to import server ${serverName}`, { error: importError.message });
+      throw new Error(`Failed to load server ${serverName}: ${importError.message}`);
+    }
     
     if (!toolsDefinitions || !toolHandlers) {
-      throw new Error(`Server ${serverName} must export toolsDefinitions and toolHandlers`);
+      throw new Error(`Server ${serverName} did not provide valid toolsDefinitions and toolHandlers`);
     }
     
     // Create MCP server instance
