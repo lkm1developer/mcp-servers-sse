@@ -146,7 +146,7 @@ class MCPServerManager {
         log('MANAGER', `Server ${serverName} loaded in standard format`);
       } else if (serverModule.createServerAdapter) {
         // Adapter format - call the adapter function
-        const adapter = await serverModule.createServerAdapter(serverDir, serverConfig.apiKeyParam);
+        const adapter = await serverModule.createServerAdapter(serverDir, serverConfig.apiKeyParam, log);
         toolsDefinitions = adapter.toolsDefinitions;
         toolHandlers = adapter.toolHandlers;
         log('MANAGER', `Server ${serverName} loaded via adapter`);
@@ -756,4 +756,4 @@ process.on('SIGQUIT', () => shutdown('SIGQUIT'));
 // Start the server
 startServer();
 
-export { serverManager };
+export { serverManager, log };
