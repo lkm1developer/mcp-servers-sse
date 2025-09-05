@@ -4,11 +4,14 @@ import express from 'express';
 import cors from 'cors';
 import jwt from 'jsonwebtoken';
 import { randomUUID } from 'node:crypto';
-import { Server } from '@modelcontextprotocol/sdk/server/index.js';
-import { SSEServerTransport } from '@modelcontextprotocol/sdk/server/sse.js';
-import { InitializeRequestSchema, ListToolsRequestSchema, CallToolRequestSchema } from '@modelcontextprotocol/sdk/types.js';
+import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
+import { isInitializeRequest } from '@modelcontextprotocol/sdk/types.js';
 import fs from 'fs';
 import path from 'path';
+import dotenv from 'dotenv';
+
+dotenv.config();
 
 // Load configuration
 const configPath = path.join(process.cwd(), 'server.json');
@@ -22,15 +25,20 @@ try {
 
 const app = express();
 const port = config.global.port || 8080;
-const JWT_SECRET = process.env.JWT_SECRET || config.global.jwt_secret;
-const LOG_FILE = path.join(process.cwd(), config.global.log_file || 'multi-mcp-debug.log');
+const JWT_SECRET = process.env.JWT_SECRET;
+const LOG_FILE = path.join(process.cwd(), 'logs', config.global.log_file || 'multi-mcp-debug.log');
+const REQUEST_LOG_FILE = path.join(process.cwd(), 'logs', 'requests.log');
 
-// Initialize log file
+// Initialize logs directory and log files
+const logsDir = path.join(process.cwd(), 'logs');
 try {
+  if (!fs.existsSync(logsDir)) {
+    fs.mkdirSync(logsDir, { recursive: true });
+  }
   const initEntry = `[${new Date().toISOString()}] Multi-MCP Server initializing...\n`;
   fs.appendFileSync(LOG_FILE, initEntry);
 } catch (error) {
-  console.error('❌ Cannot write to log file:', error.message);
+  console.error('❌ Cannot create logs directory or write to log file:', error.message);
 }
 
 function log(serverName, message, data = null) {
@@ -45,9 +53,38 @@ function log(serverName, message, data = null) {
   }
 }
 
-// Helper function to check if request is initialize
-function isInitializeRequest(body) {
-  return body && body.method === 'initialize';
+// isInitializeRequest is imported from SDK
+
+// Request logging function
+function logRequest(req, additionalInfo = {}) {
+  const timestamp = new Date().toISOString();
+  const logData = {
+    timestamp,
+    method: req.method,
+    url: req.url,
+    pathname: req.path || req.url,
+    query: req.query,
+    headers: req.headers,
+    remoteAddress: req.ip || req.connection?.remoteAddress || req.socket?.remoteAddress,
+    userAgent: req.get('User-Agent'),
+    contentType: req.get('Content-Type'),
+    contentLength: req.get('Content-Length'),
+    serverName: req.params?.serverName,
+    sessionId: req.headers['mcp-session-id'],
+    protocolVersion: req.headers['mcp-protocol-version'],
+    hasAuthorization: !!req.headers['authorization'],
+    body: req.method === 'POST' ? (req.body || '[body not captured]') : undefined,
+    ...additionalInfo
+  };
+  
+  const logEntry = `${JSON.stringify(logData, null, 2)}\n${'='.repeat(80)}\n`;
+  
+  try {
+    fs.appendFileSync(REQUEST_LOG_FILE, logEntry);
+    console.log(`📝 Request logged: ${req.method} ${req.url}`);
+  } catch (error) {
+    console.error(`[REQUEST-LOG-ERROR] Failed to write to request log: ${error.message}`);
+  }
 }
 
 // Server registry to manage multiple MCP servers
@@ -126,7 +163,7 @@ class MCPServerManager {
     }
     
     // Create MCP server instance
-    const mcpServer = new Server({
+    const mcpServer = new McpServer({
       name: serverConfig.name,
       version: serverConfig.version
     }, {
@@ -135,47 +172,42 @@ class MCPServerManager {
       }
     });
     
-    // Register tool handlers using the Server class API
-    
-    mcpServer.setRequestHandler(ListToolsRequestSchema, async () => {
-      return {
-        tools: toolsDefinitions.map(toolDef => ({
-          name: toolDef.name,
+    // Register tools using the new registerTool API
+    for (const toolDef of toolsDefinitions) {
+      mcpServer.registerTool(
+        toolDef.name,
+        {
+          title: toolDef.name,
           description: toolDef.description,
           inputSchema: toolDef.inputSchema
-        }))
-      };
-    });
+        },
+        async (args) => {
+          log(serverName, `Processing tool: ${toolDef.name}`);
+          const handler = toolHandlers[toolDef.name];
+          if (!handler) {
+            log(serverName, `Tool handler not found: ${toolDef.name}`);
+            throw new Error(`Unknown tool: ${toolDef.name}`);
+          }
 
-    mcpServer.setRequestHandler(CallToolRequestSchema, async (request) => {
-      const { name, arguments: args } = request.params;
-      
-      log(serverName, `Processing tool: ${name}`);
-      
-      const handler = toolHandlers[name];
-      if (!handler) {
-        log(serverName, `Tool handler not found: ${name}`);
-        throw new Error(`Unknown tool: ${name}`);
-      }
-      
-      try {
-        // Get API key from session data stored in serverData
-        const serverData = serverManager.getServer(serverName);
-        const sessionId = request.meta?.sessionId; // This might need adjustment based on actual session handling
-        const transport = sessionId ? serverData.transports.get(sessionId) : null;
-        const userApiKey = transport?.userApiKey;
-        const userId = transport?.userId;
-        
-        log(serverName, `Tool executing with context`, { hasApiKey: !!userApiKey, userId });
-        
-        const result = await handler(args, userApiKey, userId);
-        log(serverName, `Tool completed: ${name}`, { success: true });
-        return result;
-      } catch (error) {
-        log(serverName, `Tool error: ${name}`, { error: error.message });
-        throw error;
-      }
-    });
+          try {
+            // Get API key from current request context
+            // This will be set during request processing
+            const currentTransport = mcpServer.currentTransport;
+            const userApiKey = currentTransport?.userApiKey;
+            const userId = currentTransport?.userId;
+            
+            log(serverName, `Tool executing with context`, { hasApiKey: !!userApiKey, userId });
+            
+            const result = await handler(args, userApiKey, userId);
+            log(serverName, `Tool completed: ${toolDef.name}`, { success: true });
+            return result;
+          } catch (error) {
+            log(serverName, `Tool error: ${toolDef.name}`, { error: error.message, stack: error.stack });
+            throw error;
+          }
+        }
+      );
+    }
     
     // Store server data
     this.servers.set(serverName, {
@@ -256,6 +288,15 @@ app.use(cors({
 
 app.use(express.json({ limit: '50mb' }));
 
+// Request logging middleware - logs ALL requests
+app.use((req, res, next) => {
+  logRequest(req, { 
+    route: 'middleware',
+    timestamp: new Date().toISOString() 
+  });
+  next();
+});
+
 // MCP Protocol validation middleware
 function validateMCPRequest(req, res, next) {
   // Validate Origin header for DNS rebinding protection
@@ -272,6 +313,10 @@ function validateMCPRequest(req, res, next) {
   }
 
   // Validate MCP Protocol Version
+  const enableProtocalVerification = false
+  if(!enableProtocalVerification) {
+    return next();
+  }
   const protocolVersion = req.headers['mcp-protocol-version'];
   if (!protocolVersion) {
     return res.status(400).json({
@@ -294,45 +339,13 @@ function validateMCPRequest(req, res, next) {
   next();
 }
 
-// JWT token decryption middleware (only for initialize requests)
-function decryptJWTToken(req, res, next) {
-  try {
-    const authorization = req.headers['authorization'];
-    if (!authorization) {
-      return res.status(401).json({
-        jsonrpc: '2.0',
-        id: req.body?.id || null,
-        error: { code: -32002, message: 'Authorization header required' }
-      });
-    }
-
-    const token = authorization.replace('Bearer ', '');
-    const decoded = jwt.verify(token, JWT_SECRET);
-    
-    req.apiKey = decoded.apiKey || decoded.key;
-    req.serverName = decoded.serverName || decoded.server;
-    req.userId = decoded.userId || decoded.sub; // Optional, for better handling
-    
-    if (!req.serverName) {
-      return res.status(401).json({
-        jsonrpc: '2.0',
-        id: req.body?.id || null,
-        error: { code: -32002, message: 'Server name required in JWT token' }
-      });
-    }
-    
-    next();
-  } catch (error) {
-    return res.status(401).json({
-      jsonrpc: '2.0',
-      id: req.body?.id || null,
-      error: { code: -32002, message: 'Invalid JWT token', data: error.message }
-    });
-  }
-}
-
 // Health check endpoint
 app.get('/health', (req, res) => {
+  logRequest(req, { 
+    endpoint: 'health-check',
+    action: 'get-server-status' 
+  });
+  
   const servers = serverManager.getAllServers();
   res.json({
     status: 'healthy',
@@ -351,6 +364,11 @@ app.get('/health', (req, res) => {
 
 // Servers status endpoint (no management, just info)
 app.get('/servers', (req, res) => {
+  logRequest(req, { 
+    endpoint: 'servers-list',
+    action: 'get-all-servers' 
+  });
+  
   const servers = serverManager.getAllServers();
   res.json({ servers });
 });
@@ -358,6 +376,14 @@ app.get('/servers', (req, res) => {
 // Route-based MCP server handler
 app.post('/:serverName/mcp', validateMCPRequest, async (req, res) => {
   const { serverName } = req.params;
+  
+  logRequest(req, { 
+    endpoint: 'mcp-post',
+    serverName,
+    action: req.body?.method || 'unknown-method',
+    isInitialize: isInitializeRequest(req.body),
+    hasSessionId: !!req.headers['mcp-session-id']
+  });
   
   try {
     // Check if server exists and is ready
@@ -423,16 +449,18 @@ app.post('/:serverName/mcp', validateMCPRequest, async (req, res) => {
           });
         }
 
-        // Create new transport and connect to existing MCP server
-        transport = new SSEServerTransport();
-        const sessionId = randomUUID();
-        
-        // Store session with user's API key
-        transport.userApiKey = userApiKey;
-        transport.userId = userId;
-        transport.sessionId = sessionId;
-        serverData.transports.set(sessionId, transport);
-        log(serverName, `Session initialized: ${sessionId}`, { userId, hasApiKey: !!userApiKey });
+        // Create new transport with proper session management
+        transport = new StreamableHTTPServerTransport({
+          sessionIdGenerator: () => randomUUID(),
+          onsessioninitialized: (sessionId) => {
+            // Store the transport by session ID with user context
+            transport.userApiKey = userApiKey;
+            transport.userId = userId;
+            serverData.transports.set(sessionId, transport);
+            log(serverName, `Session initialized: ${sessionId}`, { userId, hasApiKey: !!userApiKey });
+          },
+          enableDnsRebindingProtection: false
+        });
 
         // Clean up transport when closed
         transport.onclose = () => {
@@ -471,8 +499,11 @@ app.post('/:serverName/mcp', validateMCPRequest, async (req, res) => {
     }
 
     // Tool calls will use the session's stored API key via the MCP server's tool registration
+    
+    // Set the current transport context for tool execution
+    serverData.mcpServer.currentTransport = transport;
 
-    // Handle the request
+    // Handle the request using the transport's handleRequest method
     await transport.handleRequest(req, res, req.body);
     
   } catch (error) {
@@ -495,6 +526,13 @@ app.post('/:serverName/mcp', validateMCPRequest, async (req, res) => {
 app.get('/:serverName/mcp', validateMCPRequest, async (req, res) => {
   const { serverName } = req.params;
   const sessionId = req.headers['mcp-session-id'];
+
+  logRequest(req, { 
+    endpoint: 'mcp-get-sse',
+    serverName,
+    action: 'sse-stream',
+    sessionId
+  });
 
   const serverData = serverManager.getServer(serverName);
   if (!serverData) {
@@ -539,6 +577,13 @@ app.get('/:serverName/mcp', validateMCPRequest, async (req, res) => {
 app.delete('/:serverName/mcp', validateMCPRequest, async (req, res) => {
   const { serverName } = req.params;
   const sessionId = req.headers['mcp-session-id'];
+
+  logRequest(req, { 
+    endpoint: 'mcp-delete',
+    serverName,
+    action: 'terminate-session',
+    sessionId
+  });
 
   const serverData = serverManager.getServer(serverName);
   if (!serverData) {

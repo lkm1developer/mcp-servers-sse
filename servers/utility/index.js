@@ -1,4 +1,5 @@
 // Utility MCP Server Tools
+import { z } from 'zod';
 
 export const toolsDefinitions = [
   {
@@ -6,69 +7,53 @@ export const toolsDefinitions = [
     title: 'Echo Tool',
     description: 'Echoes back the input message',
     inputSchema: {
-      type: 'object',
-      properties: {
-        message: {
-          type: 'string',
-          description: 'The message to echo back'
-        }
-      },
-      required: ['message']
+      message: z.string().describe('The message to echo back')
     }
   },
   {
     name: 'timestamp',
-    title: 'Timestamp Tool',
+    title: 'Timestamp Tool', 
     description: 'Returns current timestamp in various formats',
     inputSchema: {
-      type: 'object',
-      properties: {
-        format: {
-          type: 'string',
-          enum: ['iso', 'unix', 'readable'],
-          description: 'The timestamp format to return',
-          default: 'iso'
-        }
-      }
+      format: z.enum(['iso', 'unix', 'readable']).describe('The timestamp format to return')
     }
   }
 ];
 
 export const toolHandlers = {
-  echo: async (args, apiKey, userId) => {
+  'echo': async (args, apiKey, userId) => {
     return {
       content: [
         {
-          type: 'text',
-          text: `Echo: ${args.message} (API Key: ${apiKey?.substring(0, 10)}..., User: ${userId})`
+          type: "text",
+          text: `Echo: ${args.message}`
         }
       ]
     };
   },
-  
-  timestamp: async (args, apiKey, userId) => {
+
+  'timestamp': async (args, apiKey, userId) => {
     const now = new Date();
-    let result;
+    let timestamp;
     
-    switch (args.format || 'iso') {
-      case 'iso':
-        result = now.toISOString();
-        break;
+    switch (args.format) {
       case 'unix':
-        result = Math.floor(now.getTime() / 1000).toString();
+        timestamp = Math.floor(now.getTime() / 1000);
         break;
       case 'readable':
-        result = now.toLocaleString();
+        timestamp = now.toLocaleString();
         break;
+      case 'iso':
       default:
-        result = now.toISOString();
+        timestamp = now.toISOString();
+        break;
     }
     
     return {
       content: [
         {
-          type: 'text',
-          text: `Current timestamp (${args.format || 'iso'}): ${result}`
+          type: "text",
+          text: `Current timestamp (${args.format || 'iso'}): ${timestamp}`
         }
       ]
     };

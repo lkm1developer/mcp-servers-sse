@@ -78,12 +78,13 @@ typings/
 # DynamoDB Local files
 .dynamodb/
 
-# Logs
-logs
+# Logs directory and all log files
+logs/
 *.log
 
-# MCP Debug logs
+# Individual log files (in case they're created outside logs dir)
 multi-mcp-debug.log
+requests.log
 *.debug.log
 
 # IDE/Editor files

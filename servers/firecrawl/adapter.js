@@ -1,133 +1,74 @@
-// Adapter to convert legacy MCP Server to our format
-import { readFile } from 'fs/promises';
-import { pathToFileURL } from 'url';
-import path from 'path';
+// Adapter to convert Firecrawl MCP Server to our format
+import FirecrawlApp from '@mendable/firecrawl-js';
+import { z } from 'zod';
 
 /**
- * Extract tools from a legacy MCP server that uses Server class
+ * Extract tools from Firecrawl MCP server and create handlers for our multi-MCP system
  */
 export async function createServerAdapter(serverPath, apiKeyParam = 'FIRECRAWL_API_KEY') {
-  // Since the original server uses process.env and Server class,
-  // we need to extract just the tool definitions and create handlers
   
   const toolsDefinitions = [
     {
-      name: 'firecrawl_scrape',
-      title: 'Scrape Webpage',
-      description: 'Scrape a single webpage with advanced options for content extraction',
+      name: 'firecrawl-scrape',
+      title: 'Firecrawl Scrape',
+      description: 'Scrape a single URL and get clean, structured data',
       inputSchema: {
-        type: 'object',
-        properties: {
-          url: { type: 'string', description: 'The URL to scrape' },
-          formats: {
-            type: 'array',
-            items: {
-              type: 'string',
-              enum: ['markdown', 'html', 'rawHtml', 'screenshot', 'links', 'screenshot@fullPage', 'extract']
-            },
-            description: "Content formats to extract (default: ['markdown'])"
-          },
-          onlyMainContent: { type: 'boolean', description: 'Extract only the main content' },
-          includeTags: { type: 'array', items: { type: 'string' }, description: 'HTML tags to include' },
-          excludeTags: { type: 'array', items: { type: 'string' }, description: 'HTML tags to exclude' },
-          waitFor: { type: 'number', description: 'Time in milliseconds to wait for dynamic content' },
-          timeout: { type: 'number', description: 'Maximum time to wait for page load' },
-          mobile: { type: 'boolean', description: 'Use mobile viewport' },
-          skipTlsVerification: { type: 'boolean', description: 'Skip TLS certificate verification' },
-          removeBase64Images: { type: 'boolean', description: 'Remove base64 encoded images' }
-        },
-        required: ['url']
+        url: z.string().describe('The URL to scrape'),
+        formats: z.array(z.enum(['markdown', 'html', 'rawHtml', 'links', 'screenshot'])).describe('The formats to return')
       }
     },
     {
-      name: 'firecrawl_search',
-      title: 'Search Web',
-      description: 'Search and retrieve content from web pages',
+      name: 'firecrawl-crawl',
+      title: 'Firecrawl Crawl',
+      description: 'Crawl a website starting from a base URL',
       inputSchema: {
-        type: 'object',
-        properties: {
-          query: { type: 'string', description: 'Search query string' },
-          limit: { type: 'number', description: 'Maximum number of results (default: 5)' },
-          lang: { type: 'string', description: 'Language code (default: en)' },
-          country: { type: 'string', description: 'Country code (default: us)' },
-          scrapeOptions: {
-            type: 'object',
-            properties: {
-              formats: {
-                type: 'array',
-                items: { type: 'string', enum: ['markdown', 'html', 'rawHtml'] }
-              },
-              onlyMainContent: { type: 'boolean' },
-              waitFor: { type: 'number' }
-            }
-          }
-        },
-        required: ['query']
+        url: z.string().describe('The base URL to start crawling from'),
+        limit: z.number().describe('Maximum number of pages to crawl'),
+        formats: z.array(z.enum(['markdown', 'html', 'rawHtml', 'links'])).describe('The formats to return')
       }
     },
     {
-      name: 'firecrawl_map',
-      title: 'Map Website URLs',
-      description: 'Discover URLs from a starting point using sitemap and HTML links',
+      name: 'firecrawl-map',
+      title: 'Firecrawl Map',
+      description: 'Map all URLs on a website to understand its structure',
       inputSchema: {
-        type: 'object',
-        properties: {
-          url: { type: 'string', description: 'Starting URL for discovery' },
-          search: { type: 'string', description: 'Optional search term to filter URLs' },
-          ignoreSitemap: { type: 'boolean', description: 'Skip sitemap.xml discovery' },
-          sitemapOnly: { type: 'boolean', description: 'Only use sitemap.xml' },
-          includeSubdomains: { type: 'boolean', description: 'Include subdomains' },
-          limit: { type: 'number', description: 'Maximum number of URLs to return' }
-        },
-        required: ['url']
+        url: z.string().describe('The website URL to map'),
+        limit: z.number().describe('Maximum number of URLs to map')
       }
     },
     {
-      name: 'firecrawl_crawl',
-      title: 'Crawl Website',
-      description: 'Start an asynchronous crawl of multiple pages',
+      name: 'firecrawl-search',
+      title: 'Firecrawl Search',
+      description: 'Search for specific content across crawled pages',
       inputSchema: {
-        type: 'object',
-        properties: {
-          url: { type: 'string', description: 'Starting URL for the crawl' },
-          excludePaths: { type: 'array', items: { type: 'string' }, description: 'URL paths to exclude' },
-          includePaths: { type: 'array', items: { type: 'string' }, description: 'Only crawl these paths' },
-          maxDepth: { type: 'number', description: 'Maximum link depth' },
-          limit: { type: 'number', description: 'Maximum number of pages' },
-          ignoreSitemap: { type: 'boolean', description: 'Skip sitemap.xml' },
-          allowBackwardLinks: { type: 'boolean', description: 'Allow parent directory links' },
-          allowExternalLinks: { type: 'boolean', description: 'Allow external domain links' }
-        },
-        required: ['url']
+        query: z.string().describe('Search query to look for in crawled content'),
+        url: z.string().describe('The base URL to search within'),
+        limit: z.number().describe('Maximum number of results to return')
       }
     }
   ];
 
   const toolHandlers = {
-    firecrawl_scrape: async (args, apiKey, userId) => {
-      const FirecrawlApp = (await import('@mendable/firecrawl-js')).default;
-      
+    'firecrawl-scrape': async (args, apiKey, userId) => {
       if (!apiKey) {
         throw new Error('Firecrawl API key is required');
       }
 
-      const client = new FirecrawlApp({ apiKey });
-      const { url, ...options } = args;
-
       try {
-        const response = await client.scrapeUrl(url, options);
+        const app = new FirecrawlApp({ apiKey });
         
-        if ('success' in response && !response.success) {
-          throw new Error(response.error || 'Scraping failed');
-        }
+        const scrapeOptions = {
+          formats: args.formats || ['markdown'],
+        };
 
-        const content = 'markdown' in response 
-          ? response.markdown || response.html || response.rawHtml
-          : null;
+        const result = await app.scrapeUrl(args.url, scrapeOptions);
 
         return {
           content: [
-            { type: 'text', text: content || 'No content available' }
+            {
+              type: "text",
+              text: `Scraped content from ${args.url}:\n\n${result.markdown || result.html || result.text || 'No content found'}`
+            }
           ]
         };
       } catch (error) {
@@ -135,96 +76,97 @@ export async function createServerAdapter(serverPath, apiKeyParam = 'FIRECRAWL_A
       }
     },
 
-    firecrawl_search: async (args, apiKey, userId) => {
-      const FirecrawlApp = (await import('@mendable/firecrawl-js')).default;
-      
+    'firecrawl-crawl': async (args, apiKey, userId) => {
       if (!apiKey) {
         throw new Error('Firecrawl API key is required');
       }
 
-      const client = new FirecrawlApp({ apiKey });
-
       try {
-        const response = await client.search(args.query, args);
+        const app = new FirecrawlApp({ apiKey });
         
-        if (!response.success) {
-          throw new Error(`Search failed: ${response.error || 'Unknown error'}`);
-        }
-
-        const results = response.data
-          .map((result) => `URL: ${result.url}
-Title: ${result.title || 'No title'}
-Description: ${result.description || 'No description'}
-${result.markdown ? `\nContent:\n${result.markdown}` : ''}`)
-          .join('\n\n');
-
-        return {
-          content: [{ type: 'text', text: results }]
+        const crawlOptions = {
+          limit: args.limit || 50,
+          formats: args.formats || ['markdown']
         };
-      } catch (error) {
-        throw new Error(`Firecrawl search failed: ${error.message}`);
-      }
-    },
 
-    firecrawl_map: async (args, apiKey, userId) => {
-      const FirecrawlApp = (await import('@mendable/firecrawl-js')).default;
-      
-      if (!apiKey) {
-        throw new Error('Firecrawl API key is required');
-      }
-
-      const client = new FirecrawlApp({ apiKey });
-      const { url, ...options } = args;
-
-      try {
-        const response = await client.mapUrl(url, options);
-        
-        if ('error' in response) {
-          throw new Error(response.error);
-        }
-
-        if (!response.links) {
-          throw new Error('No links received from FireCrawl API');
-        }
-
-        return {
-          content: [{ type: 'text', text: response.links.join('\n') }]
-        };
-      } catch (error) {
-        throw new Error(`Firecrawl map failed: ${error.message}`);
-      }
-    },
-
-    firecrawl_crawl: async (args, apiKey, userId) => {
-      const FirecrawlApp = (await import('@mendable/firecrawl-js')).default;
-      
-      if (!apiKey) {
-        throw new Error('Firecrawl API key is required');
-      }
-
-      const client = new FirecrawlApp({ apiKey });
-      const { url, ...options } = args;
-
-      try {
-        const response = await client.asyncCrawlUrl(url, options);
-        
-        if (!response.success) {
-          throw new Error(response.error);
-        }
+        const result = await app.crawlUrl(args.url, crawlOptions);
 
         return {
           content: [
             {
-              type: 'text',
-              text: `Started crawl for ${url} with job ID: ${response.id}`
+              type: "text",
+              text: `Crawled ${result.data?.length || 0} pages from ${args.url}:\n\n${result.data?.map((page, index) => 
+                `${index + 1}. **${page.metadata?.title || 'Untitled'}**\n   URL: ${page.metadata?.sourceURL || 'Unknown'}\n   Content: ${(page.markdown || page.html || page.text || '').substring(0, 200)}...\n`
+              ).join('\n') || 'No pages found'}`
             }
           ]
         };
       } catch (error) {
         throw new Error(`Firecrawl crawl failed: ${error.message}`);
       }
+    },
+
+    'firecrawl-map': async (args, apiKey, userId) => {
+      if (!apiKey) {
+        throw new Error('Firecrawl API key is required');
+      }
+
+      try {
+        const app = new FirecrawlApp({ apiKey });
+        
+        const mapOptions = {
+          limit: args.limit || 500
+        };
+
+        const result = await app.mapUrl(args.url, mapOptions);
+
+        return {
+          content: [
+            {
+              type: "text",
+              text: `Website map for ${args.url}:\n\n${result.links?.map((link, index) => 
+                `${index + 1}. ${link}`
+              ).join('\n') || 'No URLs found'}\n\nTotal URLs mapped: ${result.links?.length || 0}`
+            }
+          ]
+        };
+      } catch (error) {
+        throw new Error(`Firecrawl map failed: ${error.message}`);
+      }
+    },
+
+    'firecrawl-search': async (args, apiKey, userId) => {
+      if (!apiKey) {
+        throw new Error('Firecrawl API key is required');
+      }
+
+      try {
+        const app = new FirecrawlApp({ apiKey });
+        
+        const searchOptions = {
+          limit: args.limit || 10
+        };
+
+        const result = await app.search(args.query, searchOptions);
+
+        return {
+          content: [
+            {
+              type: "text", 
+              text: `Search results for "${args.query}":\n\n${result.data?.map((item, index) => 
+                `${index + 1}. **${item.metadata?.title || 'Untitled'}**\n   URL: ${item.metadata?.sourceURL || 'Unknown'}\n   Content: ${(item.markdown || item.html || item.text || '').substring(0, 300)}...\n`
+              ).join('\n') || 'No results found'}`
+            }
+          ]
+        };
+      } catch (error) {
+        throw new Error(`Firecrawl search failed: ${error.message}`);
+      }
     }
   };
 
-  return { toolsDefinitions, toolHandlers };
+  return {
+    toolsDefinitions,
+    toolHandlers
+  };
 }
