@@ -10,6 +10,8 @@ import { isInitializeRequest } from '@modelcontextprotocol/sdk/types.js';
 import fs from 'fs';
 import path from 'path';
 import dotenv from 'dotenv';
+import { initDatabase, closeDatabase, isDatabaseConnected } from './utils/database.js';
+import McpServerUser from './models/McpServerUser.js';
 
 dotenv.config();
 
@@ -50,6 +52,51 @@ function log(serverName, message, data = null) {
     fs.appendFileSync(LOG_FILE, logEntry);
   } catch (error) {
     console.error(`[LOG-ERROR] Failed to write to log file: ${error.message}`);
+  }
+}
+
+// API Key validation function
+async function validateApiKey(apiKey, serverName, userId, serverId) {
+  if (!isDatabaseConnected()) {
+    log('AUTH', 'Database connection required for API key validation');
+    return { isValid: false, error: 'Database connection unavailable' };
+  }
+
+  if (!apiKey) {
+    log('AUTH', 'API key is required', { serverName });
+    return { isValid: false, error: 'API key is required' };
+  }
+
+  try {
+    // Look up the API key in the database
+    const mcpServerUser = await McpServerUser.findOne({
+      apiKey: apiKey,
+      userId: userId,
+      serverId: serverId,
+      enabled: true
+    })
+
+    if (!mcpServerUser) {
+      log('AUTH', `API key validation failed - key not found`, { serverName });
+      return { isValid: false, error: 'Invalid or disabled API key' };
+    }
+
+    log('AUTH', `API key validated successfully`, { 
+      serverName, 
+      userId: mcpServerUser.userId,
+      serverId: mcpServerUser.serverId,
+      keyLength: apiKey.length
+    });
+
+    return { 
+      isValid: true, 
+      userId: mcpServerUser.userId,
+      serverId: mcpServerUser.serverId,
+      rateLimit: mcpServerUser.rateLimit
+    };
+  } catch (error) {
+    log('AUTH', `API key validation error`, { error: error.message, serverName });
+    return { isValid: false, error: 'Database validation error' };
   }
 }
 
@@ -437,9 +484,10 @@ app.post('/:serverName/mcp', validateMCPRequest, async (req, res) => {
         const token = authorization.replace('Bearer ', '');
         const decoded = jwt.verify(token, JWT_SECRET);
         
-        const userApiKey = decoded.apiKey || decoded.key;
+        const userApiKey = decoded.apiKey;
+        const serverId = decoded.serverId;
         const tokenServerName = decoded.serverName || decoded.server;
-        const userId = decoded.userId || decoded.sub; // Optional
+        const userId = decoded.userId;
         
         if (tokenServerName !== serverName) {
           return res.status(401).json({
@@ -449,15 +497,39 @@ app.post('/:serverName/mcp', validateMCPRequest, async (req, res) => {
           });
         }
 
+        // Validate API key against database
+        const apiKeyValidation = await validateApiKey(userApiKey, serverName, userId, serverId);
+        if (!apiKeyValidation.isValid) {
+          return res.status(401).json({
+            jsonrpc: '2.0',
+            id: req.body?.id || null,
+            error: { 
+              code: -32002, 
+              message: 'API key validation failed', 
+              data: apiKeyValidation.error 
+            }
+          });
+        }
+
+        // Use the validated userId from database if available
+        const validatedUserId = apiKeyValidation.userId || userId;
+
         // Create new transport with proper session management
         transport = new StreamableHTTPServerTransport({
           sessionIdGenerator: () => randomUUID(),
           onsessioninitialized: (sessionId) => {
             // Store the transport by session ID with user context
             transport.userApiKey = userApiKey;
-            transport.userId = userId;
+            transport.userId = validatedUserId;
+            transport.serverId = apiKeyValidation.serverId;
+            transport.rateLimit = apiKeyValidation.rateLimit;
             serverData.transports.set(sessionId, transport);
-            log(serverName, `Session initialized: ${sessionId}`, { userId, hasApiKey: !!userApiKey });
+            log(serverName, `Session initialized: ${sessionId}`, { 
+              userId: validatedUserId, 
+              hasApiKey: !!userApiKey,
+              serverId: apiKeyValidation.serverId,
+              hasRateLimit: !!apiKeyValidation.rateLimit
+            });
           },
           enableDnsRebindingProtection: false
         });
@@ -712,7 +784,13 @@ setInterval(() => {
 // Initialize servers and start the main server
 async function startServer() {
   try {
-    // Initialize all MCP servers first
+    // Initialize database connection - REQUIRED
+    log('MAIN', 'Initializing database connection...');
+    await initDatabase();
+    log('MAIN', '✅ Database connected successfully');
+    
+    // Initialize all MCP servers
+    log('MAIN', 'Initializing MCP servers...');
     await serverManager.initializeServers();
     
     // Start the Express server
@@ -722,6 +800,7 @@ async function startServer() {
       console.log(`📋 Health check: http://localhost:${port}/health`);
       console.log(`📊 Server status: http://localhost:${port}/servers`);
       console.log(`✅ Active servers: ${serverManager.getActiveServerCount()}`);
+      console.log(`💾 Database: Connected and required for API validation`);
     });
   } catch (error) {
     console.error('❌ Failed to start server:', error.message);
@@ -744,6 +823,16 @@ const shutdown = async (signal) => {
         console.error(`Error closing transport ${serverName}:${sessionId}:`, error);
       }
     }
+  }
+  
+  // Close database connection
+  try {
+    if (isDatabaseConnected()) {
+      await closeDatabase();
+      log('MAIN', '✅ Database connection closed');
+    }
+  } catch (error) {
+    console.error('Error closing database connection:', error);
   }
   
   process.exit(0);

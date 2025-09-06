@@ -11,8 +11,8 @@ import { promisify } from 'util';
 export async function createServerAdapter(serverPath, apiKeyParam = 'MEERKATS_API_KEY') {
   
   // External service configuration
-  const EMAIL_SERVICE_URL = 'http://34.46.80.154/api/email';
-  const EMAIL_API_KEY = 'jhfgkjghtucvfg';
+  const EMAIL_SERVICE_URL = process.env.EMAIL_SERVICE_URL || 'http://34.46.80.154/api/email';
+  const EMAIL_API_KEY = process.env.EMAIL_API_KEY || 'jhfgkjghtucvfg';
   
   // Promisify DNS functions
   const resolveMx = promisify(dns.resolveMx);
@@ -123,36 +123,58 @@ export async function createServerAdapter(serverPath, apiKeyParam = 'MEERKATS_AP
       }
 
       try {
-        // Use a simple scraping approach with axios
-        const response = await axios.get(args.url, {
-          timeout: args.timeout || 30000,
-          headers: {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
-          }
-        });
-
-        let content = response.data;
-        
-        // Basic HTML to markdown conversion (simplified)
-        if (args.formats && args.formats.includes('markdown')) {
-          content = content
-            .replace(/<h[1-6][^>]*>(.*?)<\/h[1-6]>/gi, '# $1\\n\\n')
-            .replace(/<p[^>]*>(.*?)<\/p>/gi, '$1\\n\\n')
-            .replace(/<br[^>]*>/gi, '\\n')
-            .replace(/<[^>]+>/g, '') // Remove all HTML tags
-            .replace(/\\n\\s*\\n/g, '\\n\\n'); // Clean up multiple newlines
+        let url = args.url;
+        if (url && !url.startsWith('http://') && !url.startsWith('https://')) {
+          url = `https://${url}`;
         }
 
-        return {
-          content: [
-            {
-              type: "text",
-              text: `**Meerkats URL Scraping Results:**\\n\\n**URL:** ${args.url}\\n**Status:** Success\\n**Content Length:** ${content.length} characters\\n\\n**Content:**\\n${content.substring(0, 2000)}${content.length > 2000 ? '...\\n\\n(Content truncated)' : ''}`
-            }
-          ]
+        const payload = {
+          url,
+          pageOptions: {
+            waitForMs: args.waitFor || 0,
+          },
+          instant: args.waitFor ? false : true
         };
+
+        const SCRAPPER_API_URL = process.env.SCRAPPER_API_URL || 'https://crawlee-scrapper-126608443486.us-central1.run.app';
+        const SCRAPPER_API_KEY = process.env.SCRAPPER_API_KEY || apiKey;
+        const response = await axios.post(`${SCRAPPER_API_URL}/api/scraper/scrape`, payload, {
+          headers: {
+            'x-api-key': SCRAPPER_API_KEY,
+            'Content-Type': 'application/json'
+          },
+          timeout: args.timeout || 65000
+        });
+
+        if (response.data?.markdown) {
+          let content = response.data.markdown.replace(/---/g, '');
+          
+          // Apply format filtering if requested
+          if (args.formats && !args.formats.includes('markdown')) {
+            if (args.formats.includes('html')) {
+              // Keep as HTML - convert markdown back to HTML (basic)
+              content = content
+                .replace(/^# (.*$)/gim, '<h1>$1</h1>')
+                .replace(/^## (.*$)/gim, '<h2>$1</h2>')
+                .replace(/^### (.*$)/gim, '<h3>$1</h3>')
+                .replace(/\\n/g, '<br>');
+            }
+          }
+
+          return {
+            content: [
+              {
+                type: "text",
+                text: `**Meerkats URL Scraping Results:**\\n\\n**URL:** ${args.url}\\n**Status:** Success\\n**Content Length:** ${content.length} characters\\n\\n**Content:**\\n${content.substring(0, 3000)}${content.length > 3000 ? '...\\n\\n(Content truncated)' : ''}`
+              }
+            ]
+          };
+        }
+
+        throw new Error('No content found in scraping result');
       } catch (error) {
-        throw new Error(`Meerkats URL scraping failed: ${error.message}`);
+        const errorMessage = error.response?.data?.error || error.message;
+        throw new Error(`Meerkats URL scraping failed: ${errorMessage}`);
       }
     },
 
@@ -162,42 +184,45 @@ export async function createServerAdapter(serverPath, apiKeyParam = 'MEERKATS_AP
       }
 
       try {
-        // Use a basic web search with Google (you can integrate with other APIs as needed)
-        const searchUrl = `https://www.google.com/search?q=${encodeURIComponent(args.query)}`;
-        const response = await axios.get(searchUrl, {
-          headers: {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+        // Clean up query - remove quotes and special characters
+        const cleanQuery = (args.query ?? '').replace(/['"]/g, '');
+        
+        const payload = {
+          url: '', // Empty URL for web search
+          query: cleanQuery,
+          pageOptions: {
+            waitForMs: 0,
           },
-          timeout: 15000
+          instant: true
+        };
+
+        const SCRAPPER_API_URL = process.env.SCRAPPER_API_URL || 'https://crawlee-scrapper-126608443486.us-central1.run.app';
+        const SCRAPPER_API_KEY = process.env.SCRAPPER_API_KEY || apiKey;
+        const response = await axios.post(`${SCRAPPER_API_URL}/api/scraper/scrape`, payload, {
+          headers: {
+            'x-api-key': SCRAPPER_API_KEY,
+            'Content-Type': 'application/json'
+          },
+          timeout: 30000
         });
 
-        // Basic extraction of search results from HTML
-        let content = response.data;
-        const results = [];
-        
-        // Simple regex to extract basic search result information
-        const titleRegex = /<h3[^>]*>(.*?)<\/h3>/gi;
-        let match;
-        let count = 0;
-        
-        while ((match = titleRegex.exec(content)) && count < 10) {
-          const title = match[1].replace(/<[^>]+>/g, '').trim();
-          if (title && title.length > 10) {
-            results.push(`${count + 1}. ${title}`);
-            count++;
-          }
+        if (response.data?.markdown) {
+          let content = response.data.markdown.replace(/---/g, '');
+          
+          return {
+            content: [
+              {
+                type: "text",
+                text: `**Meerkats Web Search Results:**\\n\\n**Query:** ${args.query}\\n**Status:** Success\\n**Content Length:** ${content.length} characters\\n\\n**Search Results:**\\n${content.substring(0, 3000)}${content.length > 3000 ? '...\\n\\n(Content truncated)' : ''}`
+              }
+            ]
+          };
         }
 
-        return {
-          content: [
-            {
-              type: "text",
-              text: `**Meerkats Web Search Results:**\\n\\n**Query:** ${args.query}\\n**Results Found:** ${results.length}\\n\\n**Search Results:**\\n${results.join('\\n') || 'No results found'}\\n\\n**Note:** This is a basic web search implementation. For better results, consider integrating with Google Custom Search API or similar services.`
-            }
-          ]
-        };
+        throw new Error('No search results found');
       } catch (error) {
-        throw new Error(`Meerkats web search failed: ${error.message}`);
+        const errorMessage = error.response?.data?.error || error.message;
+        throw new Error(`Meerkats web search failed: ${errorMessage}`);
       }
     },
 

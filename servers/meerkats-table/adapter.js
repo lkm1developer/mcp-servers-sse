@@ -9,9 +9,9 @@ import axios from 'axios';
 export async function createServerAdapter(serverPath, apiKeyParam = 'MEERKATS_TABLE_API_KEY') {
   const toolsDefinitions = [
     {
-      name: "scrape_url",
-      title: "Meerkats Scrape URL",
-      description: "Scrape a URL and return the content as markdown or HTML",
+      name: "meerkats-table-scrape-url",
+      title: "Meerkats Table Scrape URL",
+      description: "Scrape a URL and return the content as markdown or HTML for table processing",
       inputSchema: {
         url: z.string().describe("URL to scrape"),
         formats: z.array(z.enum(["markdown", "html"])).optional().describe("Content formats to extract (default: ['markdown'])"),
@@ -23,9 +23,9 @@ export async function createServerAdapter(serverPath, apiKeyParam = 'MEERKATS_TA
       }
     },
     {
-      name: "web_search",
-      title: "Meerkats Web Search",
-      description: "Search the web and return results",
+      name: "meerkats-table-web-search",
+      title: "Meerkats Table Web Search",
+      description: "Search the web and return results for table processing",
       inputSchema: {
         query: z.string().describe("Query to search for on the web")
       }
@@ -494,70 +494,112 @@ export async function createServerAdapter(serverPath, apiKeyParam = 'MEERKATS_TA
     }
   }
   const toolHandlersOriginal = {
-    async scrape_url(args, apiKey, userId){
+    async "meerkats-table-scrape-url"(args, apiKey, userId){
       if (!apiKey) {
-        throw new Error('Meerkats API key is required');
+        throw new Error('Meerkats Table API key is required');
       }
 
       try {
-        return {
-          content: [
-            {
-              type: "text",
-              text: `Coming soon`
-            }
-          ]
+        let url = args.url;
+        if (url && !url.startsWith('http://') && !url.startsWith('https://')) {
+          url = `https://${url}`;
         }
-        // Use a simple scraping approach with axios
-        // const response = await axios.get(args.url, {
-        //   timeout: args.timeout || 30000,
-        //   headers: {
-        //     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
-        //   }
-        // });
 
-        // let content = response.data;
-        
-        // // Basic HTML to markdown conversion (simplified)
-        // if (args.formats && args.formats.includes('markdown')) {
-        //   content = content
-        //     .replace(/<h[1-6][^>]*>(.*?)<\/h[1-6]>/gi, '# $1\\n\\n')
-        //     .replace(/<p[^>]*>(.*?)<\/p>/gi, '$1\\n\\n')
-        //     .replace(/<br[^>]*>/gi, '\\n')
-        //     .replace(/<[^>]+>/g, '') // Remove all HTML tags
-        //     .replace(/\\n\\s*\\n/g, '\\n\\n'); // Clean up multiple newlines
-        // }
+        const payload = {
+          url,
+          pageOptions: {
+            waitForMs: args.waitFor || 0,
+          },
+          instant: args.waitFor ? false : true
+        };
 
-        // return {
-        //   content: [
-        //     {
-        //       type: "text",
-        //       text: `**Meerkats URL Scraping Results:**\\n\\n**URL:** ${args.url}\\n**Status:** Success\\n**Content Length:** ${content.length} characters\\n\\n**Content:**\\n${content.substring(0, 2000)}${content.length > 2000 ? '...\\n\\n(Content truncated)' : ''}`
-        //     }
-        //   ]
-        // };
+        const SCRAPPER_API_URL = process.env.SCRAPPER_API_URL || 'https://crawlee-scrapper-126608443486.us-central1.run.app';
+        const SCRAPPER_API_KEY = process.env.SCRAPPER_API_KEY || apiKey;
+        const response = await axios.post(`${SCRAPPER_API_URL}/api/scraper/scrape`, payload, {
+          headers: {
+            'x-api-key': SCRAPPER_API_KEY,
+            'Content-Type': 'application/json'
+          },
+          timeout: args.timeout || 65000
+        });
+
+        if (response.data?.markdown) {
+          let content = response.data.markdown.replace(/---/g, '');
+          
+          // Apply format filtering if requested
+          if (args.formats && !args.formats.includes('markdown')) {
+            if (args.formats.includes('html')) {
+              // Keep as HTML - convert markdown back to HTML (basic)
+              content = content
+                .replace(/^# (.*$)/gim, '<h1>$1</h1>')
+                .replace(/^## (.*$)/gim, '<h2>$1</h2>')
+                .replace(/^### (.*$)/gim, '<h3>$1</h3>')
+                .replace(/\\n/g, '<br>');
+            }
+          }
+
+          return {
+            content: [
+              {
+                type: "text",
+                text: `**Meerkats Table URL Scraping Results:**\\n\\n**URL:** ${args.url}\\n**Status:** Success\\n**Content Length:** ${content.length} characters\\n\\n**Content:**\\n${content.substring(0, 3000)}${content.length > 3000 ? '...\\n\\n(Content truncated)' : ''}`
+              }
+            ]
+          };
+        }
+
+        throw new Error('No content found in scraping result');
       } catch (error) {
-        throw new Error(`Meerkats URL scraping failed: ${error.message}`);
+        const errorMessage = error.response?.data?.error || error.message;
+        throw new Error(`Meerkats Table URL scraping failed: ${errorMessage}`);
       }
     },
 
-    async web_search(args, apiKey, userId){
+    async "meerkats-table-web-search"(args, apiKey, userId){
       if (!apiKey) {
-        throw new Error('Meerkats API key is required');
+        throw new Error('Meerkats Table API key is required');
       }
 
       try {
-        // This is a placeholder implementation - you would integrate with a real search API
-        return {
-          content: [
-            {
-              type: "text",
-              text: `Coming soon`
-            }
-          ]
+        // Clean up query - remove quotes and special characters
+        const cleanQuery = (args.query ?? '').replace(/['"]/g, '');
+        
+        const payload = {
+          url: '', // Empty URL for web search
+          query: cleanQuery,
+          pageOptions: {
+            waitForMs: 0,
+          },
+          instant: true
         };
+
+        const SCRAPPER_API_URL = process.env.SCRAPPER_API_URL || 'https://crawlee-scrapper-126608443486.us-central1.run.app';
+        const SCRAPPER_API_KEY = process.env.SCRAPPER_API_KEY || apiKey;
+        const response = await axios.post(`${SCRAPPER_API_URL}/api/scraper/scrape`, payload, {
+          headers: {
+            'x-api-key': SCRAPPER_API_KEY,
+            'Content-Type': 'application/json'
+          },
+          timeout: 30000
+        });
+
+        if (response.data?.markdown) {
+          let content = response.data.markdown.replace(/---/g, '');
+          
+          return {
+            content: [
+              {
+                type: "text",
+                text: `**Meerkats Table Web Search Results:**\\n\\n**Query:** ${args.query}\\n**Status:** Success\\n**Content Length:** ${content.length} characters\\n\\n**Search Results:**\\n${content.substring(0, 3000)}${content.length > 3000 ? '...\\n\\n(Content truncated)' : ''}`
+              }
+            ]
+          };
+        }
+
+        throw new Error('No search results found');
       } catch (error) {
-        throw new Error(`Meerkats web search failed: ${error.message}`);
+        const errorMessage = error.response?.data?.error || error.message;
+        throw new Error(`Meerkats Table web search failed: ${errorMessage}`);
       }
     },
     async list_tables(args, accessToken) {
