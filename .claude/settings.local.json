@@ -5,7 +5,9 @@
       "WebFetch(domain:github.com)",
       "WebFetch(domain:raw.githubusercontent.com)",
       "WebFetch(domain:api.github.com)",
-      "Read(//e/mk-mcp/server/**)"
+      "Read(//e/mk-mcp/server/**)",
+      "Read(//e/mcp-servers/meerkats.ai/build/**)",
+      "Bash(sed:*)"
     ],
     "deny": [],
     "ask": []

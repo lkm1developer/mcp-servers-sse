@@ -135,10 +135,19 @@
       "entryFile": "adapter.js",
       "apiKeyParam": "HATCH_API_KEY"
     },
-    "meerkats": {
-      "name": "Meerkats MCP Server",
+    "meerkats-table": {
+      "name": "Meerkats Table MCP Server",
       "version": "2.0.0",
       "description": "Comprehensive table/sheet management with AI capabilities, artifact generation, and data processing",
+      "directory": "./servers/meerkats-table",
+      "enabled": true,
+      "entryFile": "adapter.js",
+      "apiKeyParam": "MEERKATS_TABLE_API_KEY"
+    },
+    "meerkats": {
+      "name": "Meerkats MCP Server",
+      "version": "1.0.0",
+      "description": "Web scraping, email verification, Google services, and domain utilities",
       "directory": "./servers/meerkats",
       "enabled": true,
       "entryFile": "adapter.js",
