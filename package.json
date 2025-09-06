@@ -6,7 +6,7 @@
   "type": "module",
   "scripts": {
     "start": "node multi-mcp-server.js",
-    "dev": "node --watch --watch-path=. --ignore=logs/ multi-mcp-server.js"
+    "dev": "node --watch multi-mcp-server.js"
   },
   "dependencies": {
     "@mendable/firecrawl-js": "^1.3.2",
