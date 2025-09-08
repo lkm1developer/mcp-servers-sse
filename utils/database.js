@@ -1,7 +1,9 @@
 import mongoose from 'mongoose';
 import fs from 'fs';
 import path from 'path';
-
+import Connections from '../models/Connections.js';
+import pkg from 'crypto-js';
+const { AES, enc } = pkg;
 let isConnected = false;
 
 // Initialize logs directory function
@@ -89,4 +91,47 @@ export async function closeDatabase() {
 
 export function isDatabaseConnected() {
   return isConnected && mongoose.connection.readyState === 1;
+}
+export const getEncryptionKey = async () => {
+    const encryptKey = process.env.ENCRYPTION_KEY ?? 'ddsf%@#%#dfdfdfvbvdf546456dfcxgvdfgvfdg'
+    return encryptKey
+}
+export const decryptCredentialData = async (encryptedData) => {
+    const encryptKey = await getEncryptionKey()
+    const decryptedData = AES.decrypt(encryptedData, encryptKey)
+    try {
+        const plainDataObj = JSON.parse(decryptedData.toString(enc.Utf8))
+        return plainDataObj
+    } catch (e) {
+        console.error(e)
+        throw new Error('Credentials could not be decrypted.')
+    }
+}
+export async function getSystemConnection(pieceNames, userId) {
+    try {
+        let obj = {}
+        let where = { pieceName: { $in: pieceNames }, isSystem: true }
+        if (userId) {
+            where = { pieceName: { $in: pieceNames }, userId }
+        }
+        const connections = await Connections.find(where).sort({ updatedAt: -1 })
+        if (connections) {
+            for (const connection of connections) {
+                if (connection && connection.data) {
+                    try {
+                        const value = await decryptCredentialData(connection.data)
+                        obj[connection.pieceName] = value
+                    } catch (error) {
+                        obj[connection.pieceName] = ''
+                    }
+                } else {
+                    obj[connection.pieceName] = ''
+                }
+            }
+        }
+        return obj
+    } catch (error) {
+        console.log('getConnectionValue', error)
+        return {}
+    }
 }

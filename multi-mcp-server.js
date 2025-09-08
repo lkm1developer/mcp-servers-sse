@@ -10,8 +10,9 @@ import { isInitializeRequest } from '@modelcontextprotocol/sdk/types.js';
 import fs from 'fs';
 import path from 'path';
 import dotenv from 'dotenv';
-import { initDatabase, closeDatabase, isDatabaseConnected } from './utils/database.js';
+import { initDatabase, closeDatabase, isDatabaseConnected, getSystemConnection } from './utils/database.js';
 import McpServerUser from './models/McpServerUser.js';
+import McpServerDb from './models/McpServer.js';
 
 dotenv.config();
 
@@ -46,7 +47,7 @@ try {
 function log(serverName, message, data = null) {
   const timestamp = new Date().toISOString();
   const logEntry = `[${timestamp}] [${serverName}] ${message}${data ? '\n' + JSON.stringify(data, null, 2) : ''}\n`;
-  
+
   try {
     console.log(`[${serverName}] ${message}`, data || '');
     fs.appendFileSync(LOG_FILE, logEntry);
@@ -68,6 +69,34 @@ async function validateApiKey(apiKey, serverName, userId, serverId) {
   }
 
   try {
+    if (userId === 'system') {
+      const mcpServerUser = await McpServerDb.findOne({
+        _id: serverId,
+        disabled: { $ne: true }
+      })
+      const conObj = await getSystemConnection([`${serverName.toUpperCase()}_API_KEY`]);
+      const dbApiKey = conObj[`${serverName.toUpperCase()}_API_KEY`];
+      if (!dbApiKey) {
+        log('AUTH', `API key validation failed -key not found`, { serverName });
+        return { isValid: false, error: 'Invalid or disabled API key' };
+      }
+      if (apiKey !== dbApiKey) {
+        log('AUTH', `API key validation failed - key not found`, { serverName });
+        return { isValid: false, error: 'Invalid or disabled API key' };
+      }
+      log('AUTH', `API key validated successfully`, {
+        serverName,
+        userId: mcpServerUser.userId,
+        serverId: mcpServerUser.serverId,
+        keyLength: apiKey.length
+      });
+      return {
+        isValid: true,
+        userId: mcpServerUser.userId,
+        serverId: mcpServerUser.serverId,
+        rateLimit: mcpServerUser.rateLimit
+      };
+    }
     // Look up the API key in the database
     const mcpServerUser = await McpServerUser.findOne({
       apiKey: apiKey,
@@ -81,15 +110,15 @@ async function validateApiKey(apiKey, serverName, userId, serverId) {
       return { isValid: false, error: 'Invalid or disabled API key' };
     }
 
-    log('AUTH', `API key validated successfully`, { 
-      serverName, 
+    log('AUTH', `API key validated successfully`, {
+      serverName,
       userId: mcpServerUser.userId,
       serverId: mcpServerUser.serverId,
       keyLength: apiKey.length
     });
 
-    return { 
-      isValid: true, 
+    return {
+      isValid: true,
       userId: mcpServerUser.userId,
       serverId: mcpServerUser.serverId,
       rateLimit: mcpServerUser.rateLimit
@@ -123,9 +152,9 @@ function logRequest(req, additionalInfo = {}) {
     body: req.method === 'POST' ? (req.body || '[body not captured]') : undefined,
     ...additionalInfo
   };
-  
+
   const logEntry = `${JSON.stringify(logData, null, 2)}\n${'='.repeat(80)}\n`;
-  
+
   try {
     fs.appendFileSync(REQUEST_LOG_FILE, logEntry);
     console.log(`📝 Request logged: ${req.method} ${req.url}`);
@@ -143,13 +172,13 @@ class MCPServerManager {
   // Initialize all servers from config
   async initializeServers() {
     log('MANAGER', 'Initializing servers from configuration');
-    
+
     for (const [serverName, serverConfig] of Object.entries(config.servers)) {
       if (!serverConfig.enabled) {
         log('MANAGER', `Server ${serverName} is disabled, skipping`);
         continue;
       }
-      
+
       try {
         await this.initializeServer(serverName, serverConfig);
       } catch (error) {
@@ -165,27 +194,27 @@ class MCPServerManager {
         });
       }
     }
-    
+
     log('MANAGER', `Initialized ${this.getActiveServerCount()} out of ${Object.keys(config.servers).length} servers`);
   }
 
   async initializeServer(serverName, serverConfig) {
     log('MANAGER', `Initializing server: ${serverName}`);
-    
+
     // Load server tools from directory
     const serverDir = path.resolve(serverConfig.directory);
     const entryFile = path.join(serverDir, serverConfig.entryFile || 'index.js');
-    
+
     if (!fs.existsSync(entryFile)) {
       throw new Error(`Entry file not found: ${entryFile}`);
     }
-    
+
     // Dynamically import the server module with cache busting
     let toolsDefinitions, toolHandlers;
-    
+
     try {
       const serverModule = await import(`file://${entryFile}?t=${Date.now()}`);
-      
+
       if (serverModule.toolsDefinitions && serverModule.toolHandlers) {
         // New format - direct export
         toolsDefinitions = serverModule.toolsDefinitions;
@@ -204,11 +233,11 @@ class MCPServerManager {
       log('MANAGER', `Failed to import server ${serverName}`, { error: importError.message });
       throw new Error(`Failed to load server ${serverName}: ${importError.message}`);
     }
-    
+
     if (!toolsDefinitions || !toolHandlers) {
       throw new Error(`Server ${serverName} did not provide valid toolsDefinitions and toolHandlers`);
     }
-    
+
     // Create MCP server instance
     const mcpServer = new McpServer({
       name: serverConfig.name,
@@ -218,7 +247,7 @@ class MCPServerManager {
         tools: {},
       }
     });
-    
+
     // Register tools using the new registerTool API
     for (const toolDef of toolsDefinitions) {
       mcpServer.registerTool(
@@ -242,9 +271,9 @@ class MCPServerManager {
             const currentTransport = mcpServer.currentTransport;
             const userApiKey = currentTransport?.userApiKey;
             const userId = currentTransport?.userId;
-            
+
             log(serverName, `Tool executing with context`, { hasApiKey: !!userApiKey, userId });
-            
+
             const result = await handler(args, userApiKey, userId);
             log(serverName, `Tool completed: ${toolDef.name}`, { success: true });
             return result;
@@ -255,7 +284,7 @@ class MCPServerManager {
         }
       );
     }
-    
+
     // Store server data
     this.servers.set(serverName, {
       transports: new Map(),
@@ -266,7 +295,7 @@ class MCPServerManager {
       createdAt: new Date(),
       lastActivity: new Date()
     });
-    
+
     log('MANAGER', `Server ${serverName} initialized successfully with ${toolsDefinitions.length} tools`);
   }
 
@@ -305,7 +334,7 @@ class MCPServerManager {
       server.status = 'crashed';
       server.crashedAt = new Date();
       server.crashError = error.message;
-      
+
       // Close all transports for this server
       server.transports.forEach(transport => {
         try {
@@ -316,7 +345,7 @@ class MCPServerManager {
           log('MANAGER', `Error closing transport during crash for ${serverName}`, closeError);
         }
       });
-      
+
       server.transports.clear();
       log('MANAGER', `Server crashed and isolated: ${serverName}`, { error: error.message });
     }
@@ -337,9 +366,9 @@ app.use(express.json({ limit: '50mb' }));
 
 // Request logging middleware - logs ALL requests
 app.use((req, res, next) => {
-  logRequest(req, { 
+  logRequest(req, {
     route: 'middleware',
-    timestamp: new Date().toISOString() 
+    timestamp: new Date().toISOString()
   });
   next();
 });
@@ -361,7 +390,7 @@ function validateMCPRequest(req, res, next) {
 
   // Validate MCP Protocol Version
   const enableProtocalVerification = false
-  if(!enableProtocalVerification) {
+  if (!enableProtocalVerification) {
     return next();
   }
   const protocolVersion = req.headers['mcp-protocol-version'];
@@ -388,11 +417,11 @@ function validateMCPRequest(req, res, next) {
 
 // Health check endpoint
 app.get('/health', (req, res) => {
-  logRequest(req, { 
+  logRequest(req, {
     endpoint: 'health-check',
-    action: 'get-server-status' 
+    action: 'get-server-status'
   });
-  
+
   const servers = serverManager.getAllServers();
   res.json({
     status: 'healthy',
@@ -411,11 +440,11 @@ app.get('/health', (req, res) => {
 
 // Servers status endpoint (no management, just info)
 app.get('/servers', (req, res) => {
-  logRequest(req, { 
+  logRequest(req, {
     endpoint: 'servers-list',
-    action: 'get-all-servers' 
+    action: 'get-all-servers'
   });
-  
+
   const servers = serverManager.getAllServers();
   res.json({ servers });
 });
@@ -423,15 +452,15 @@ app.get('/servers', (req, res) => {
 // Route-based MCP server handler
 app.post('/:serverName/mcp', validateMCPRequest, async (req, res) => {
   const { serverName } = req.params;
-  
-  logRequest(req, { 
+
+  logRequest(req, {
     endpoint: 'mcp-post',
     serverName,
     action: req.body?.method || 'unknown-method',
     isInitialize: isInitializeRequest(req.body),
     hasSessionId: !!req.headers['mcp-session-id']
   });
-  
+
   try {
     // Check if server exists and is ready
     const serverData = serverManager.getServer(serverName);
@@ -447,8 +476,8 @@ app.post('/:serverName/mcp', validateMCPRequest, async (req, res) => {
       return res.status(503).json({
         jsonrpc: '2.0',
         id: req.body?.id || null,
-        error: { 
-          code: -32003, 
+        error: {
+          code: -32003,
           message: `Server '${serverName}' is crashed`,
           data: {
             crashedAt: serverData.crashedAt,
@@ -483,12 +512,12 @@ app.post('/:serverName/mcp', validateMCPRequest, async (req, res) => {
       try {
         const token = authorization.replace('Bearer ', '');
         const decoded = jwt.verify(token, JWT_SECRET);
-        
+
         const userApiKey = decoded.apiKey;
         const serverId = decoded.serverId;
         const tokenServerName = decoded.serverName || decoded.server;
         const userId = decoded.userId;
-        
+
         if (tokenServerName !== serverName) {
           return res.status(401).json({
             jsonrpc: '2.0',
@@ -503,10 +532,10 @@ app.post('/:serverName/mcp', validateMCPRequest, async (req, res) => {
           return res.status(401).json({
             jsonrpc: '2.0',
             id: req.body?.id || null,
-            error: { 
-              code: -32002, 
-              message: 'API key validation failed', 
-              data: apiKeyValidation.error 
+            error: {
+              code: -32002,
+              message: 'API key validation failed',
+              data: apiKeyValidation.error
             }
           });
         }
@@ -524,8 +553,8 @@ app.post('/:serverName/mcp', validateMCPRequest, async (req, res) => {
             transport.serverId = apiKeyValidation.serverId;
             transport.rateLimit = apiKeyValidation.rateLimit;
             serverData.transports.set(sessionId, transport);
-            log(serverName, `Session initialized: ${sessionId}`, { 
-              userId: validatedUserId, 
+            log(serverName, `Session initialized: ${sessionId}`, {
+              userId: validatedUserId,
               hasApiKey: !!userApiKey,
               serverId: apiKeyValidation.serverId,
               hasRateLimit: !!apiKeyValidation.rateLimit
@@ -552,7 +581,7 @@ app.post('/:serverName/mcp', validateMCPRequest, async (req, res) => {
           id: req.body?.id || null,
           error: { code: -32002, message: 'Invalid JWT token', data: jwtError.message }
         });
-      } 
+      }
       // catch (error) {
       //   log(serverName, 'Failed to create new session', error);
       //   serverManager.crashServer(serverName, error);
@@ -571,21 +600,21 @@ app.post('/:serverName/mcp', validateMCPRequest, async (req, res) => {
     }
 
     // Tool calls will use the session's stored API key via the MCP server's tool registration
-    
+
     // Set the current transport context for tool execution
     serverData.mcpServer.currentTransport = transport;
 
     // Handle the request using the transport's handleRequest method
     await transport.handleRequest(req, res, req.body);
-    
+
   } catch (error) {
     log(serverName, 'Request handling error', { error: error.message, stack: error.stack });
-    
+
     // Mark server as crashed if it's a critical error
     if (error.message.includes('ECONNREFUSED') || error.message.includes('server') || error.code === 'ENOTFOUND') {
       serverManager.crashServer(serverName, error);
     }
-    
+
     res.status(500).json({
       jsonrpc: '2.0',
       id: req.body?.id || null,
@@ -599,7 +628,7 @@ app.get('/:serverName/mcp', validateMCPRequest, async (req, res) => {
   const { serverName } = req.params;
   const sessionId = req.headers['mcp-session-id'];
 
-  logRequest(req, { 
+  logRequest(req, {
     endpoint: 'mcp-get-sse',
     serverName,
     action: 'sse-stream',
@@ -617,8 +646,8 @@ app.get('/:serverName/mcp', validateMCPRequest, async (req, res) => {
   if (serverData.status === 'crashed') {
     return res.status(503).json({
       jsonrpc: '2.0',
-      error: { 
-        code: -32003, 
+      error: {
+        code: -32003,
         message: `Server '${serverName}' is crashed`,
         data: { crashedAt: serverData.crashedAt, error: serverData.crashError }
       }
@@ -650,7 +679,7 @@ app.delete('/:serverName/mcp', validateMCPRequest, async (req, res) => {
   const { serverName } = req.params;
   const sessionId = req.headers['mcp-session-id'];
 
-  logRequest(req, { 
+  logRequest(req, {
     endpoint: 'mcp-delete',
     serverName,
     action: 'terminate-session',
@@ -710,7 +739,7 @@ app.all('*', (req, res) => {
   };
 
   logRequest(req, requestDetails);
-  
+
   log('CATCH-ALL', `Unmatched request: ${req.method} ${req.originalUrl}`, {
     ...requestDetails,
     timestamp: new Date().toISOString(),
@@ -723,8 +752,8 @@ app.all('*', (req, res) => {
     res.status(404).json({
       jsonrpc: '2.0',
       id: req.body?.id || null,
-      error: { 
-        code: -32001, 
+      error: {
+        code: -32001,
         message: 'MCP endpoint not found',
         data: {
           availableServers: serverManager.getAllServers().map(s => s.name),
@@ -753,10 +782,10 @@ app.all('*', (req, res) => {
 // Cleanup inactive sessions
 setInterval(() => {
   let totalCleaned = 0;
-  
+
   for (const [serverName, serverData] of serverManager.servers.entries()) {
     if (serverData.status === 'crashed') continue;
-    
+
     let cleaned = 0;
     for (const [sessionId, transport] of serverData.transports.entries()) {
       try {
@@ -769,13 +798,13 @@ setInterval(() => {
         cleaned++;
       }
     }
-    
+
     if (cleaned > 0) {
       log(serverName, `Cleaned up ${cleaned} inactive sessions`);
       totalCleaned += cleaned;
     }
   }
-  
+
   if (totalCleaned > 0) {
     log('CLEANUP', `Total sessions cleaned: ${totalCleaned}`);
   }
@@ -788,11 +817,11 @@ async function startServer() {
     log('MAIN', 'Initializing database connection...');
     await initDatabase();
     log('MAIN', '✅ Database connected successfully');
-    
+
     // Initialize all MCP servers
     log('MAIN', 'Initializing MCP servers...');
     await serverManager.initializeServers();
-    
+
     // Start the Express server
     app.listen(port, '0.0.0.0', () => {
       log('MAIN', `🚀 Multi-MCP Server started on port ${port}`);
@@ -811,7 +840,7 @@ async function startServer() {
 // Graceful shutdown
 const shutdown = async (signal) => {
   console.log(`🛑 Received ${signal}, shutting down gracefully...`);
-  
+
   // Close all servers
   for (const [serverName, serverData] of serverManager.servers.entries()) {
     for (const [sessionId, transport] of serverData.transports.entries()) {
@@ -824,7 +853,7 @@ const shutdown = async (signal) => {
       }
     }
   }
-  
+
   // Close database connection
   try {
     if (isDatabaseConnected()) {
@@ -834,7 +863,7 @@ const shutdown = async (signal) => {
   } catch (error) {
     console.error('Error closing database connection:', error);
   }
-  
+
   process.exit(0);
 };
 
