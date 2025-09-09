@@ -13,6 +13,7 @@ import dotenv from 'dotenv';
 import { initDatabase, closeDatabase, isDatabaseConnected, getSystemConnection } from './utils/database.js';
 import McpServerUser from './models/McpServerUser.js';
 import McpServerDb from './models/McpServer.js';
+import ApiKey from './models/ApiKey.js';
 
 dotenv.config();
 
@@ -69,6 +70,25 @@ async function validateApiKey(apiKey, serverName, userId, serverId) {
   }
 
   try {
+    console.log('🔑 Validating API key...', serverName);
+    if(serverName ==='meerkats-table'){
+        const apiKeyDb = await ApiKey.findOne({ name: 'automation', userId, isActive:true });
+        console.log({apiKeyDb})
+        if (!apiKeyDb) {
+          log('AUTH', `API key validation failed -key not found`, { serverName });
+          return { isValid: false, error: 'Invalid or disabled API key' };
+        }
+        if (apiKey !== apiKeyDb.key) {
+          log('AUTH', `API key validation failed -key not found`, { serverName });
+          return { isValid: false, error: 'Invalid or disabled API key' };
+        }
+        return {
+          isValid: true,
+          userId: apiKeyDb.userId,
+          serverId: 'meerkats-table',
+          rateLimit: null
+        };
+    }
     if (userId === 'system') {
       const mcpServerUser = await McpServerDb.findOne({
         _id: serverId,
@@ -517,7 +537,7 @@ app.post('/:serverName/mcp', validateMCPRequest, async (req, res) => {
         const serverId = decoded.serverId;
         const tokenServerName = decoded.serverName || decoded.server;
         const userId = decoded.userId;
-
+        console.log({decoded})
         if (tokenServerName !== serverName) {
           return res.status(401).json({
             jsonrpc: '2.0',

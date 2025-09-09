@@ -206,7 +206,7 @@ export async function createServerAdapter(serverPath, apiKeyParam = 'MEERKATS_TA
             title: z.string().describe("Human readable operator name")
           }).describe("Filter operator"),
           value: z.string().optional().describe("Filter value to compare against"),
-          condition: z.enum(["And", "Or"]).optional().describe("Logical condition to combine with other filters")
+          condition: z.enum(["And", "Or"]).optional().describe("console.logical condition to combine with other filters")
         })).optional().describe("Array of filter conditions to apply to rows"),
         from: z.number().optional().describe("Starting row number for row range filtering"),
         to: z.number().optional().describe("Ending row number for row range filtering"),
@@ -407,7 +407,7 @@ export async function createServerAdapter(serverPath, apiKeyParam = 'MEERKATS_TA
   async function makeAuthenticatedApiRequest(endpoint, method = 'GET', data = null, apiKey) {
     const url = `${API_BASE_URL}${endpoint}`;
 
-    log(`API Request: ${method} ${url}`, { hasApiKey: !!apiKey });
+    console.log(`API Request: ${method} ${url}`, { hasApiKey: !!apiKey });
     try {
       const config = {
         method,
@@ -423,8 +423,8 @@ export async function createServerAdapter(serverPath, apiKeyParam = 'MEERKATS_TA
       const response = await axios(config);
       return response.data;
     } catch (error) {
-      log(`API Request failed: ${JSON.stringify(error)}`)
-      log(`API Request failed: ${error.message}`, {
+      console.log(`API Request failed: ${JSON.stringify(error)}`)
+      console.log(`API Request failed: ${error.message}`, {
         status: error.response?.status,
         data: error.response?.data
       });
@@ -459,7 +459,7 @@ export async function createServerAdapter(serverPath, apiKeyParam = 'MEERKATS_TA
         }]
       }
     } catch (error) {
-      log('AI Cell run failed', { error: error.message, stack: error.stack });
+      console.log('AI Cell run failed', { error: error.message, stack: error.stack });
       throw new Error(`Request failed: ${error.message}`);
     }
   }
@@ -474,7 +474,7 @@ export async function createServerAdapter(serverPath, apiKeyParam = 'MEERKATS_TA
           'Authorization': `Bearer ${accessToken}`
         }
       })
-      log('Artifact generated and saved', { artifactData: result.data });
+      console.log('Artifact generated and saved', { artifactData: result.data });
       return {
         content: [{
           type: "text",
@@ -615,7 +615,7 @@ export async function createServerAdapter(serverPath, apiKeyParam = 'MEERKATS_TA
         accessToken
       );
 
-      log(`Successfully listed ${result.data?.length || 0} tables`, {
+      console.log(`Successfully listed ${result.data?.length || 0} tables`, {
         pagination: result.pagination
       });
 
@@ -637,8 +637,8 @@ export async function createServerAdapter(serverPath, apiKeyParam = 'MEERKATS_TA
         null,
         accessToken
       );
-      log(`Retrieved table details for table `);
-      log(JSON.stringify(result, null, 2));
+      console.log(`Retrieved table details for table `);
+      console.log(JSON.stringify(result, null, 2));
       return {
         content: [{
           type: "text",
@@ -648,7 +648,7 @@ export async function createServerAdapter(serverPath, apiKeyParam = 'MEERKATS_TA
     },
 
     async create_table(args, accessToken) {
-      log(`Creating table with columns=>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>`);
+      console.log(`Creating table with columns=>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>`);
 
       // Validate AI columns have required tools
       if (args.columns) {
@@ -679,7 +679,7 @@ export async function createServerAdapter(serverPath, apiKeyParam = 'MEERKATS_TA
         accessToken
       );
 
-      log(`Created table with ${args?.columns?.length} columns`);
+      console.log(`Created table with ${args?.columns?.length} columns`);
       return {
         content: [{
           type: "text",
@@ -738,7 +738,7 @@ export async function createServerAdapter(serverPath, apiKeyParam = 'MEERKATS_TA
         accessToken
       );
 
-      log(`Retrieved ${result.data?.length || 0} rows from table ${args.tableId}`, {
+      console.log(`Retrieved ${result.data?.length || 0} rows from table ${args.tableId}`, {
         pagination: result.pagination
       });
 
@@ -822,7 +822,7 @@ export async function createServerAdapter(serverPath, apiKeyParam = 'MEERKATS_TA
         accessToken
       );
 
-      log(`Added ${args.rows.length} rows in bulk to table ${args.tableId}`);
+      console.log(`Added ${args.rows.length} rows in bulk to table ${args.tableId}`);
       return {
         content: [{
           type: "text",
@@ -839,7 +839,7 @@ export async function createServerAdapter(serverPath, apiKeyParam = 'MEERKATS_TA
         accessToken
       );
 
-      log(`Retrieved ${result.data?.length || 0} available MCP servers`);
+      console.log(`Retrieved ${result.data?.length || 0} available MCP servers`);
       return {
         content: [{
           type: "text",
@@ -876,7 +876,7 @@ export async function createServerAdapter(serverPath, apiKeyParam = 'MEERKATS_TA
         accessToken
       );
 
-      log(`Added column '${args.name}' to table ${args.tableId}`);
+      console.log(`Added column '${args.name}' to table ${args.tableId}`);
       return {
         content: [{
           type: "text",
@@ -885,7 +885,7 @@ export async function createServerAdapter(serverPath, apiKeyParam = 'MEERKATS_TA
       };
     },
     async add_table_columns(args, accessToken) {
-      log(`Adding columns to table ${args.tableId}`);
+      console.log(`Adding columns to table ${args.tableId}`);
 
       // Parse columns if it's a string (for backward compatibility)
       let columns = args.columns;
@@ -893,7 +893,7 @@ export async function createServerAdapter(serverPath, apiKeyParam = 'MEERKATS_TA
         try {
           columns = JSON.parse(columns);
         } catch (error) {
-          log(`Failed to parse columns JSON: ${error.message}`);
+          console.log(`Failed to parse columns JSON: ${error.message}`);
           throw new Error(`Invalid columns format: ${error.message}`);
         }
       }
@@ -914,7 +914,7 @@ export async function createServerAdapter(serverPath, apiKeyParam = 'MEERKATS_TA
         }
       }
 
-      log(`Validated columns:`, columns);
+      console.log(`Validated columns:`, columns);
       const result = await makeAuthenticatedApiRequest(
         `/automations/${args.tableId}/columns`,
         'POST',
@@ -957,7 +957,7 @@ export async function createServerAdapter(serverPath, apiKeyParam = 'MEERKATS_TA
         accessToken
       );
 
-      log(`Updated column '${args.columnId}' in table ${args.tableId}`);
+      console.log(`Updated column '${args.columnId}' in table ${args.tableId}`);
       return {
         content: [{
           type: "text",
@@ -979,7 +979,7 @@ export async function createServerAdapter(serverPath, apiKeyParam = 'MEERKATS_TA
         accessToken
       );
 
-      log(`${args.isScheduled === false ? 'Disabled' : 'Configured'} scheduling for column '${args.columnId}' in table ${args.tableId}`);
+      console.log(`${args.isScheduled === false ? 'Disabled' : 'Configured'} scheduling for column '${args.columnId}' in table ${args.tableId}`);
       return {
         content: [{
           type: "text",
@@ -996,7 +996,7 @@ export async function createServerAdapter(serverPath, apiKeyParam = 'MEERKATS_TA
         accessToken
       );
 
-      log(`Retrieved schedule information for column '${args.columnId}' in table ${args.tableId}`);
+      console.log(`Retrieved schedule information for column '${args.columnId}' in table ${args.tableId}`);
       return {
         content: [{
           type: "text",
@@ -1021,7 +1021,7 @@ export async function createServerAdapter(serverPath, apiKeyParam = 'MEERKATS_TA
         accessToken
       );
 
-      log(`Filtered rows in table ${args.tableId}`, {
+      console.log(`Filtered rows in table ${args.tableId}`, {
         totalRows: result.data.totalRows,
         filteredCount: result.data.filteredRowsCount,
         page: result.data.pagination.page,
@@ -1048,7 +1048,7 @@ export async function createServerAdapter(serverPath, apiKeyParam = 'MEERKATS_TA
         accessToken
       );
 
-      log(`Successfully listed ${result.data?.length || 0} sheets for table ${args.tableId}`, {
+      console.log(`Successfully listed ${result.data?.length || 0} sheets for table ${args.tableId}`, {
         pagination: result.pagination
       });
 
@@ -1068,7 +1068,7 @@ export async function createServerAdapter(serverPath, apiKeyParam = 'MEERKATS_TA
         accessToken
       );
 
-      log(`Retrieved sheet details for ${args.sheetId}`);
+      console.log(`Retrieved sheet details for ${args.sheetId}`);
       return {
         content: [{
           type: "text",
@@ -1089,7 +1089,7 @@ export async function createServerAdapter(serverPath, apiKeyParam = 'MEERKATS_TA
         accessToken
       );
 
-      log(`Created new sheet '${args.sheetName}' in table ${args.tableId}`);
+      console.log(`Created new sheet '${args.sheetName}' in table ${args.tableId}`);
       return {
         content: [{
           type: "text",
@@ -1110,7 +1110,7 @@ export async function createServerAdapter(serverPath, apiKeyParam = 'MEERKATS_TA
         accessToken
       );
 
-      log(`Updated sheet ${args.sheetId}`);
+      console.log(`Updated sheet ${args.sheetId}`);
       return {
         content: [{
           type: "text",
@@ -1127,7 +1127,7 @@ export async function createServerAdapter(serverPath, apiKeyParam = 'MEERKATS_TA
         accessToken
       );
 
-      log(`Deleted sheet ${args.sheetId}`);
+      console.log(`Deleted sheet ${args.sheetId}`);
       return {
         content: [{
           type: "text",
@@ -1148,7 +1148,7 @@ export async function createServerAdapter(serverPath, apiKeyParam = 'MEERKATS_TA
         accessToken
       );
 
-      log(`Retrieved ${result.data?.length || 0} rows from sheet ${args.sheetId}`, {
+      console.log(`Retrieved ${result.data?.length || 0} rows from sheet ${args.sheetId}`, {
         pagination: result.pagination
       });
 
@@ -1168,7 +1168,7 @@ export async function createServerAdapter(serverPath, apiKeyParam = 'MEERKATS_TA
         accessToken
       );
 
-      log(`Added new row to sheet ${args.sheetId}`);
+      console.log(`Added new row to sheet ${args.sheetId}`);
       return {
         content: [{
           type: "text",
@@ -1185,7 +1185,7 @@ export async function createServerAdapter(serverPath, apiKeyParam = 'MEERKATS_TA
         accessToken
       );
 
-      log(`Updated row ${args.rowId} in sheet ${args.sheetId}`);
+      console.log(`Updated row ${args.rowId} in sheet ${args.sheetId}`);
       return {
         content: [{
           type: "text",
@@ -1202,7 +1202,7 @@ export async function createServerAdapter(serverPath, apiKeyParam = 'MEERKATS_TA
         accessToken
       );
 
-      log(`Deleted row ${args.rowId} from sheet ${args.sheetId}`);
+      console.log(`Deleted row ${args.rowId} from sheet ${args.sheetId}`);
       return {
         content: [{
           type: "text",
@@ -1227,7 +1227,7 @@ export async function createServerAdapter(serverPath, apiKeyParam = 'MEERKATS_TA
         accessToken
       );
 
-      log(`Filtered rows in sheet ${args.sheetId}`, {
+      console.log(`Filtered rows in sheet ${args.sheetId}`, {
         totalRows: result.data.totalRows,
         filteredCount: result.data.filteredRowsCount,
         page: result.data.pagination.page,
@@ -1275,7 +1275,7 @@ export async function createServerAdapter(serverPath, apiKeyParam = 'MEERKATS_TA
         accessToken
       );
 
-      log(`Successfully listed ${result.data?.length || 0} artifacts`, {
+      console.log(`Successfully listed ${result.data?.length || 0} artifacts`, {
         pagination: result.pagination
       });
 
@@ -1295,7 +1295,7 @@ export async function createServerAdapter(serverPath, apiKeyParam = 'MEERKATS_TA
         accessToken
       );
 
-      log(`Retrieved artifact details for ${args.artifactId}`);
+      console.log(`Retrieved artifact details for ${args.artifactId}`);
       return {
         content: [{
           type: "text",
@@ -1319,8 +1319,8 @@ export async function createServerAdapter(serverPath, apiKeyParam = 'MEERKATS_TA
     },
 
     async get_mcp_server_rate_limits(args, accessToken) {
-      log('Retrieving MCP Server Rate Limits');
-      log(JSON.stringify(args));
+      console.log('Retrieving MCP Server Rate Limits');
+      console.log(JSON.stringify(args));
       const params = new URLSearchParams();
       if (args.serverName) params.append('serverName', args.serverName);
 
@@ -1331,7 +1331,7 @@ export async function createServerAdapter(serverPath, apiKeyParam = 'MEERKATS_TA
         accessToken
       );
 
-      log(`Successfully retrieved ${result.data?.length || 0} rate limit settings`, {
+      console.log(`Successfully retrieved ${result.data?.length || 0} rate limit settings`, {
         serverName: args.serverName
       });
 
@@ -1356,7 +1356,7 @@ export async function createServerAdapter(serverPath, apiKeyParam = 'MEERKATS_TA
         accessToken
       );
 
-      log(`Updated rate limit for server ${args.serverName}`, {
+      console.log(`Updated rate limit for server ${args.serverName}`, {
         limit: args.limit,
         timeperiod: args.timeperiod,
         entity: args.entity
@@ -1381,7 +1381,7 @@ export async function createServerAdapter(serverPath, apiKeyParam = 'MEERKATS_TA
         accessToken
       );
 
-      log(`Checked for duplicates in table ${args.tableId}`, {
+      console.log(`Checked for duplicates in table ${args.tableId}`, {
         attributeKeys: args.attributeKeys,
         duplicatesFound: result.data?.totalDuplicateRows || 0
       });
@@ -1405,7 +1405,7 @@ export async function createServerAdapter(serverPath, apiKeyParam = 'MEERKATS_TA
         accessToken
       );
 
-      log(`Deleted duplicate rows from table ${args.tableId}`, {
+      console.log(`Deleted duplicate rows from table ${args.tableId}`, {
         attributeKeys: args.attributeKeys,
         result: result.data || result
       });
