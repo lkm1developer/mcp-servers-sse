@@ -14,6 +14,9 @@ import { initDatabase, closeDatabase, isDatabaseConnected, getSystemConnection }
 import McpServerUser from './models/McpServerUser.js';
 import McpServerDb from './models/McpServer.js';
 import ApiKey from './models/ApiKey.js';
+import { ConnectionPoolManager } from './utils/connectionPool.js';
+import { RateLimiter } from './utils/rateLimiter.js';
+import { MonitoringSystem } from './utils/monitoring.js';
 
 dotenv.config();
 
@@ -32,6 +35,33 @@ const port = config.global.port || 8080;
 const JWT_SECRET = process.env.JWT_SECRET;
 const LOG_FILE = path.join(process.cwd(), 'logs', config.global.log_file || 'multi-mcp-debug.log');
 const REQUEST_LOG_FILE = path.join(process.cwd(), 'logs', 'requests.log');
+
+// Initialize production systems
+const connectionPool = new ConnectionPoolManager({
+  maxConnectionsPerServer: config.global.maxConnectionsPerServer || 50,
+  maxConcurrentRequestsPerUser: config.global.maxConcurrentRequestsPerUser || 10,
+  maxTotalConnections: config.global.maxTotalConnections || 500,
+  connectionTimeout: config.global.connectionTimeout || 30000,
+  requestTimeout: config.global.requestTimeout || 60000,
+  queueMaxSize: config.global.queueMaxSize || 1000
+});
+
+const rateLimiter = new RateLimiter({
+  tokensPerWindow: config.global.rateLimitTokens || 100,
+  windowSizeMs: config.global.rateLimitWindow || 60000,
+  perUserLimit: config.global.perUserLimit || 10,
+  perServerLimit: config.global.perServerLimit || 50,
+  enableAdaptive: config.global.enableAdaptiveRateLimit || true
+});
+
+const monitoring = new MonitoringSystem({
+  healthCheckInterval: config.global.healthCheckInterval || 30000,
+  metricsCollectionInterval: config.global.metricsInterval || 10000,
+  enableAlerting: config.global.enableAlerting || true,
+  cpuThreshold: config.global.cpuThreshold || 80,
+  memoryThreshold: config.global.memoryThreshold || 85,
+  responseTimeThreshold: config.global.responseTimeThreshold || 5000
+});
 
 // Initialize logs directory and log files
 const logsDir = path.join(process.cwd(), 'logs');

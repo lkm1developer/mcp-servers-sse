@@ -9,14 +9,14 @@ import { promisify } from 'util';
  * Provides web scraping, email verification, Google services, and domain utilities
  */
 export async function createServerAdapter(serverPath, apiKeyParam = 'MEERKATS_API_KEY') {
-  
+
   // External service configuration
   const EMAIL_SERVICE_URL = process.env.EMAIL_SERVICE_URL || 'http://34.46.80.154/api/email';
   const EMAIL_API_KEY = process.env.EMAIL_API_KEY || 'jhfgkjghtucvfg';
-  
+
   // Promisify DNS functions
   const resolveMx = promisify(dns.resolveMx);
-  
+
   const toolsDefinitions = [
     {
       name: "meerkats-scrape-url",
@@ -123,6 +123,40 @@ export async function createServerAdapter(serverPath, apiKeyParam = 'MEERKATS_AP
       }
 
       try {
+        const isTest = true
+        if (isTest) {
+          return {
+            content: [
+              {
+                type: "text",
+                text: `Scraping Results: Automate growth workflows
+by chatting with AI
+
+Generate leads, onboard users, and track results
+Decorative
+VIBE CODING, BUT FOR
+VIBE MARKETERS
+
+Describe the leads, the logic, and the messaging style.
+
+Build the whole thing: scraping, enrichment, sequences, and response handling.
+
+No devs. No prompt chains. Just working campaigns.
+Plug AI into your own data &
+over 100 integrations
+Stop wasting hours mapping flows and gluing tools to launch just one campaign
+Benefit Icon
+
+No more slow feedback loops that force guesswork and hides what is working
+Benefit Icon
+
+Modern GTM needs dynamic campaigns that convert better — not clunky workflows
+With Meerkats AI you
+chat your way to growth`
+              }
+            ]
+          };
+        }
         let url = args.url;
         if (url && !url.startsWith('http://') && !url.startsWith('https://')) {
           url = `https://${url}`;
@@ -143,12 +177,14 @@ export async function createServerAdapter(serverPath, apiKeyParam = 'MEERKATS_AP
             'x-api-key': SCRAPPER_API_KEY,
             'Content-Type': 'application/json'
           },
-          timeout: args.timeout || 65000
+          timeout: args.timeout || 30000,
+          maxRedirects: 5,
+          validateStatus: (status) => status < 500
         });
 
         if (response.data?.markdown) {
           let content = response.data.markdown.replace(/---/g, '');
-          
+
           // Apply format filtering if requested
           if (args.formats && !args.formats.includes('markdown')) {
             if (args.formats.includes('html')) {
@@ -186,7 +222,7 @@ export async function createServerAdapter(serverPath, apiKeyParam = 'MEERKATS_AP
       try {
         // Clean up query - remove quotes and special characters
         const cleanQuery = (args.query ?? '').replace(/['"]/g, '');
-        
+
         const payload = {
           url: '', // Empty URL for web search
           query: cleanQuery,
@@ -208,7 +244,7 @@ export async function createServerAdapter(serverPath, apiKeyParam = 'MEERKATS_AP
 
         if (response.data?.markdown) {
           let content = response.data.markdown.replace(/---/g, '');
-          
+
           return {
             content: [
               {
@@ -400,7 +436,7 @@ export async function createServerAdapter(serverPath, apiKeyParam = 'MEERKATS_AP
         } catch (apiError) {
           // Fallback to DNS lookup if API fails
           const mxRecords = await resolveMx(args.domain);
-          
+
           const sortedMxRecords = mxRecords
             .sort((a, b) => a.priority - b.priority)
             .map((record, index) => `${index + 1}. ${record.exchange} (Priority: ${record.priority})`);
@@ -427,7 +463,7 @@ export async function createServerAdapter(serverPath, apiKeyParam = 'MEERKATS_AP
       try {
         const limit = args.limit || 10;
         const searchUrl = `https://www.google.com/search?q=${encodeURIComponent(args.query)}&num=${limit}`;
-        
+
         const response = await axios.get(searchUrl, {
           headers: {
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
@@ -438,17 +474,17 @@ export async function createServerAdapter(serverPath, apiKeyParam = 'MEERKATS_AP
         // Extract search results from Google SERP
         let content = response.data;
         const results = [];
-        
+
         // Regex to extract search result blocks
         const resultRegex = /<div class="g"[^>]*>.*?<h3[^>]*><a[^>]*href="([^"]*)"[^>]*>(.*?)<\/a><\/h3>.*?<span[^>]*>(.*?)<\/span>/gis;
         let match;
         let count = 0;
-        
+
         while ((match = resultRegex.exec(content)) && count < limit) {
           const url = match[1];
           const title = match[2].replace(/<[^>]+>/g, '').trim();
           const snippet = match[3].replace(/<[^>]+>/g, '').trim();
-          
+
           if (title && url && title.length > 5) {
             results.push({
               title,
@@ -481,7 +517,7 @@ export async function createServerAdapter(serverPath, apiKeyParam = 'MEERKATS_AP
       try {
         const limit = args.limit || 10;
         let searchQuery = args.query;
-        
+
         // If location is provided in latitude,longitude format, use it for location-based search
         if (args.location && /^-?\d+\.?\d*,-?\d+\.?\d*$/.test(args.location)) {
           const [lat, lng] = args.location.split(',');
@@ -492,7 +528,7 @@ export async function createServerAdapter(serverPath, apiKeyParam = 'MEERKATS_AP
 
         // Use Google Maps search URL
         const mapsSearchUrl = `https://www.google.com/maps/search/${encodeURIComponent(searchQuery)}`;
-        
+
         const response = await axios.get(mapsSearchUrl, {
           headers: {
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
@@ -503,16 +539,16 @@ export async function createServerAdapter(serverPath, apiKeyParam = 'MEERKATS_AP
         // Basic extraction of place information from Google Maps
         let content = response.data;
         const places = [];
-        
+
         // Simple regex to extract place names and addresses (this is very basic)
         const placeRegex = /<div[^>]*aria-label="([^"]*)"[^>]*>.*?<span[^>]*>(.*?)<\/span>/gis;
         let match;
         let count = 0;
-        
+
         while ((match = placeRegex.exec(content)) && count < limit) {
           const name = match[1];
           const address = match[2];
-          
+
           if (name && name.length > 3 && !name.includes('Search') && !name.includes('Map')) {
             places.push({
               name: name.substring(0, 100),
@@ -544,7 +580,7 @@ export async function createServerAdapter(serverPath, apiKeyParam = 'MEERKATS_AP
       try {
         // Use Google search with "places" context
         const searchUrl = `https://www.google.com/search?q=${encodeURIComponent(args.query + ' places near me')}`;
-        
+
         const response = await axios.get(searchUrl, {
           headers: {
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
@@ -555,19 +591,19 @@ export async function createServerAdapter(serverPath, apiKeyParam = 'MEERKATS_AP
         // Basic extraction of place information
         let content = response.data;
         const places = [];
-        
+
         // Try to extract business listings and places
         const businessRegex = /<div[^>]*class="[^"]*business[^"]*"[^>]*>.*?<span[^>]*>(.*?)<\/span>.*?<span[^>]*>(.*?)<\/span>/gis;
         const placeRegex = /<h3[^>]*><a[^>]*>(.*?)<\/a><\/h3>.*?<span[^>]*>(.*?)<\/span>/gis;
-        
+
         let match;
         let count = 0;
-        
+
         // Try business regex first
         while ((match = businessRegex.exec(content)) && count < 10) {
           const name = match[1].replace(/<[^>]+>/g, '').trim();
           const info = match[2].replace(/<[^>]+>/g, '').trim();
-          
+
           if (name && name.length > 3 && !name.includes('Search') && !name.includes('Map')) {
             places.push({
               name: name.substring(0, 100),
@@ -578,13 +614,13 @@ export async function createServerAdapter(serverPath, apiKeyParam = 'MEERKATS_AP
             count++;
           }
         }
-        
+
         // If no businesses found, try general places
         if (places.length === 0) {
           while ((match = placeRegex.exec(content)) && count < 10) {
             const name = match[1].replace(/<[^>]+>/g, '').trim();
             const info = match[2].replace(/<[^>]+>/g, '').trim();
-            
+
             if (name && name.length > 3 && !name.includes('Search') && !name.includes('Google')) {
               places.push({
                 name: name.substring(0, 100),

@@ -9,7 +9,11 @@
       "Read(//e/mcp-servers/meerkats.ai/build/**)",
       "Bash(sed:*)",
       "Read(//e/job-runner/src/**)",
-      "Read(//e/mcp-servers/smartlead/src/**)"
+      "Read(//e/mcp-servers/smartlead/src/**)",
+      "Bash(chmod:*)",
+      "Bash(curl:*)",
+      "Bash(node:*)",
+      "Bash(PORT=8081 node multi-mcp-server-production.js)"
     ],
     "deny": [],
     "ask": []
