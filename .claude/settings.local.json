@@ -8,7 +8,8 @@
       "Read(//e/mk-mcp/server/**)",
       "Read(//e/mcp-servers/meerkats.ai/build/**)",
       "Bash(sed:*)",
-      "Read(//e/job-runner/src/**)"
+      "Read(//e/job-runner/src/**)",
+      "Read(//e/mcp-servers/smartlead/src/**)"
     ],
     "deny": [],
     "ask": []
