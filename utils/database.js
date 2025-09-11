@@ -93,7 +93,7 @@ export function isDatabaseConnected() {
   return isConnected && mongoose.connection.readyState === 1;
 }
 export const getEncryptionKey = async () => {
-    const encryptKey = process.env.ENCRYPTION_KEY ?? 'ddsf%@#%#dfdfdfvbvdf546456dfcxgvdfgvfdg'
+    const encryptKey = process.env.ENCRYPTION_KEY ?? ''
     return encryptKey
 }
 export const decryptCredentialData = async (encryptedData) => {

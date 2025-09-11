@@ -6,11 +6,7 @@
   "type": "module",
   "scripts": {
     "start": "node multi-mcp-server-simple.js",
-    "start:original": "node multi-mcp-server.js",
-    "start:production": "node multi-mcp-server-production.js",
     "dev": "node --watch multi-mcp-server-simple.js",
-    "dev:original": "node --watch multi-mcp-server.js",
-    "production": "./start-production.sh",
     "health": "curl http://localhost:8080/health",
     "metrics": "curl http://localhost:8080/metrics",
     "test:concurrent": "echo 'Server proven to handle 400+ concurrent requests'",
