@@ -28,7 +28,7 @@ try {
 }
 
 const app = express();
-const port = process.env.PORT || config.global.port || 8080;
+const port = process.env.SSE_PORT || 8009;
 const JWT_SECRET = process.env.JWT_SECRET;
 
 // Simple logging
