@@ -7,6 +7,6 @@ RUN yarn install
 
 # Copy app source
 COPY . .
-EXPOSE 8080
+EXPOSE 8009
 
 CMD [ "yarn", "start" ]
