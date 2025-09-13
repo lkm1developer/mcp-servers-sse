@@ -152,6 +152,15 @@
       "enabled": true,
       "entryFile": "adapter.js",
       "apiKeyParam": "MEERKATS_API_KEY"
+    },
+    "smartlead":{
+      "name": "SmartLead MCP Server",
+      "version": "1.0.0",
+      "description": "SmartLead integration for email finding and verification",
+      "directory": "./servers/smartlead",
+      "enabled": true,
+      "entryFile": "adapter.js",
+      "apiKeyParam": "SMARTLEAD_API_KEY"
     }
   },
   "global": {
