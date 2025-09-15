@@ -125,6 +125,7 @@ export async function createServerAdapter(serverPath, apiKeyParam = 'MEERKATS_AP
       try {
         const isTest = true
         if (isTest) {
+          await new Promise((resolve) => setTimeout(resolve, 20000));
           return {
             content: [
               {
