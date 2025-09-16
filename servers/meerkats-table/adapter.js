@@ -398,7 +398,7 @@ export async function createServerAdapter(serverPath, apiKeyParam = 'MEERKATS_TA
     }
   ];
   // Configuration for Google Cloud Run production
-  const isLocal = false
+  const isLocal = process.env.NODE_ENV === 'development';
   const API_BASE_URL = isLocal ? "http://localhost:5000/api/v1" : "https://prod-api-126608443486.us-central1.run.app/api/v1";
   const JOB_INSERTER_URL = process.env.JOB_INSERTER_URL || "https://prod-api-126608443486.us-central1.run.app";
   const API_VERSION = process.env.API_VERSION || "v1";
@@ -494,7 +494,7 @@ export async function createServerAdapter(serverPath, apiKeyParam = 'MEERKATS_TA
     }
   }
   const toolHandlersOriginal = {
-    async "meerkats-table-scrape-url"(args, apiKey, userId){
+    async "meerkats-table-scrape-url"(args, apiKey, userId) {
       if (!apiKey) {
         throw new Error('Meerkats Table API key is required');
       }
@@ -525,7 +525,7 @@ export async function createServerAdapter(serverPath, apiKeyParam = 'MEERKATS_TA
 
         if (response.data?.markdown) {
           let content = response.data.markdown.replace(/---/g, '');
-          
+
           // Apply format filtering if requested
           if (args.formats && !args.formats.includes('markdown')) {
             if (args.formats.includes('html')) {
@@ -555,7 +555,7 @@ export async function createServerAdapter(serverPath, apiKeyParam = 'MEERKATS_TA
       }
     },
 
-    async "meerkats-table-web-search"(args, apiKey, userId){
+    async "meerkats-table-web-search"(args, apiKey, userId) {
       if (!apiKey) {
         throw new Error('Meerkats Table API key is required');
       }
@@ -563,7 +563,7 @@ export async function createServerAdapter(serverPath, apiKeyParam = 'MEERKATS_TA
       try {
         // Clean up query - remove quotes and special characters
         const cleanQuery = (args.query ?? '').replace(/['"]/g, '');
-        
+
         const payload = {
           url: '', // Empty URL for web search
           query: cleanQuery,
@@ -585,7 +585,7 @@ export async function createServerAdapter(serverPath, apiKeyParam = 'MEERKATS_TA
 
         if (response.data?.markdown) {
           let content = response.data.markdown.replace(/---/g, '');
-          
+
           return {
             content: [
               {
@@ -654,14 +654,18 @@ export async function createServerAdapter(serverPath, apiKeyParam = 'MEERKATS_TA
       if (args.columns) {
         for (const column of args.columns) {
           if (column.type === 'AI') {
-            if (!column.tools || column.tools.length === 0) {
-              throw new Error(`AI column "${column.name}" must specify at least one tool in "servername.toolname" format`);
-            }
+            // if (!column.tools || column.tools.length === 0) {
+            //   throw new Error(`AI column "${column.name}" must specify at least one tool in "servername.toolname" format`);
+            // }
 
             // Validate tools format
-            for (const tool of column.tools) {
-              if (!tool.includes('.')) {
-                throw new Error(`Tool "${tool}" for column "${column.name}" must be in "servername.toolname" format`);
+            if (column.tools && column.tools.length > 0) {
+
+
+              for (const tool of column.tools) {
+                if (!tool.includes('.')) {
+                  throw new Error(`Tool "${tool}" for column "${column.name}" must be in "servername.toolname" format`);
+                }
               }
             }
           }
@@ -674,7 +678,10 @@ export async function createServerAdapter(serverPath, apiKeyParam = 'MEERKATS_TA
         {
           name: args.name,
           description: args.description,
-          columns: args.columns || [],
+          columns: (args.columns || []).map((column, index) => ({
+            ...column,
+            index
+          })),
         },
         accessToken
       );
@@ -901,14 +908,16 @@ export async function createServerAdapter(serverPath, apiKeyParam = 'MEERKATS_TA
       // Validate AI columns have required tools
       for (const column of columns) {
         if (column.type === 'AI') {
-          if (!column.tools || column.tools.length === 0) {
-            throw new Error(`AI column "${column.name}" must specify at least one tool in "servername.toolname" format`);
-          }
+          // if (!column.tools || column.tools.length === 0) {
+          //   throw new Error(`AI column "${column.name}" must specify at least one tool in "servername.toolname" format`);
+          // }
 
           // Validate tools format
-          for (const tool of column.tools) {
-            if (!tool.includes('.')) {
-              throw new Error(`Tool "${tool}" for column "${column.name}" must be in "servername.toolname" format`);
+          if (column.tools && column.tools.length > 0) {
+            for (const tool of column.tools) {
+              if (!tool.includes('.')) {
+                throw new Error(`Tool "${tool}" for column "${column.name}" must be in "servername.toolname" format`);
+              }
             }
           }
         }
