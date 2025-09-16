@@ -1,6 +1,7 @@
 // Meerkats MCP Server Adapter for 2025 Protocol
 import { z } from 'zod';
 import axios from 'axios';
+import { log } from '../../multi-mcp-server-simple.js';
 
 /**
  * Meerkats MCP Server adapter for multi-MCP system
@@ -400,7 +401,7 @@ export async function createServerAdapter(serverPath, apiKeyParam = 'MEERKATS_TA
   // Configuration for Google Cloud Run production
   const isLocal = process.env.NODE_ENV === 'development';
   const API_BASE_URL = isLocal ? "http://localhost:5000/api/v1" : "https://prod-api-126608443486.us-central1.run.app/api/v1";
-  const JOB_INSERTER_URL = process.env.JOB_INSERTER_URL || "https://prod-api-126608443486.us-central1.run.app";
+  const JOB_INSERTER_URL = process.env.JOB_INSERTER_URL || "https://j1.meerkats.ai";
   const API_VERSION = process.env.API_VERSION || "v1";
 
   // Enhanced API request utility with API key
@@ -439,6 +440,7 @@ export async function createServerAdapter(serverPath, apiKeyParam = 'MEERKATS_TA
 
   // Helper function for running AI cells
   async function runTableAICell(data = null, accessToken) {
+    log(`Running AI cell token ${accessToken}`, JOB_INSERTER_URL);
     const url = `${JOB_INSERTER_URL}/api/v2/batches/${data.tableId}/aiColumnData`;
     if (data) {
       data.sheetId = data.sheetId || data.tableId;

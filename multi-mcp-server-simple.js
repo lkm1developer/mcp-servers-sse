@@ -43,7 +43,7 @@ try {
   console.error('❌ Cannot create logs directory:', error.message);
 }
 
-function log(serverName, message, data = null) {
+export function log(serverName, message, data = null) {
   const timestamp = new Date().toISOString();
   const logEntry = `[${timestamp}] [${serverName}] ${message}${data ? '\\n' + JSON.stringify(data, null, 2) : ''}\\n`;
   
