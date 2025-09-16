@@ -316,12 +316,12 @@ export async function createServerAdapter(serverPath, apiKeyParam = 'MEERKATS_TA
       name: "run_table_ai_cells_bulk",
       description: "Run AI processing for multiple table cells in bulk",
       inputSchema: {
-        type: z.enum(["first_10", "all", "errored_only", "specific_count"]).describe("Type of bulk run"),
+        type: z.enum(["all", "count"]).describe("Type of bulk run"),
         columnId: z.string().describe("The ID of a reference column for the column to run"),
         sheetId: z.string().describe("The ID of the sheet to run bulk processing on"),
         tableId: z.string().describe("The ID of the table to run bulk processing on"),
         onlyErrored: z.boolean().optional().describe("Only run on cells that have errors (default: false)"),
-        count: z.number().min(1).max(1000).optional().describe("Number of rows to process when type is 'specific_count'"),
+        count: z.number().min(1).max(1000).optional().describe("Number of rows to process when type is 'count'"),
         rowIds: z.array(z.string()).optional().describe("Array of row IDs to run bulk processing on")
       },
     },
