@@ -137,7 +137,7 @@ async function validateApiKey(apiKey, serverName, userId, serverId) {
 
     let result;
     
-    if (serverName === 'meerkats-table') {
+    if (serverName === 'meerkats-table' && userId !== 'system') {
       const apiKeyDb = await ApiKey.findOne({ name: 'automation', userId, isActive: true });
       if (!apiKeyDb || apiKey !== apiKeyDb.key) {
         result = { isValid: false, error: 'Invalid or disabled API key' };
