@@ -57,7 +57,7 @@ export async function createServerAdapter(serverPath, apiKeyParam = 'MEERKATS_TA
           name: z.string().describe("Column name (becomes label in backend)"),
           dataType: z.enum(["text", "url", "date", "number", "uuid"]).describe("Data type: text, url, date, number, uuid"),
           type: z.enum(["AI", "Input"]).describe("Column type: AI or Input"),
-          prompt: z.string().optional().describe("AI prompt for AI type columns"),
+          prompt: z.string().optional().describe("AI prompt for AI type columns do reference other column by {columnName}"),
           tools: z.array(z.string()).optional().describe("Array of MCP tools in format 'server_name.tool_name' for AI columns")
         })).optional().describe("Array of columns for the table")
       },
@@ -69,7 +69,7 @@ export async function createServerAdapter(serverPath, apiKeyParam = 'MEERKATS_TA
         tableId: z.string().describe("The ID of the table to update"),
         name: z.string().optional().describe("New name for the table"),
         description: z.string().optional().describe("New description for the table"),
-        prompt: z.string().optional().describe("AI prompt for the table"),
+        prompt: z.string().optional().describe("AI prompt for the table, "),
         autoEnrich: z.boolean().optional().describe("Enable auto-enrichment for the table")
       },
     },
@@ -140,7 +140,7 @@ export async function createServerAdapter(serverPath, apiKeyParam = 'MEERKATS_TA
         name: z.string().describe("Name of the column (becomes label in backend)"),
         dataType: z.enum(["text", "url", "date", "number", "uuid"]).describe("Data type of the column"),
         type: z.enum(["AI", "Input"]).describe("Column type"),
-        prompt: z.string().optional().describe("AI prompt for AI type columns. Use {Column Name} for dependencies on other columns"),
+        prompt: z.string().optional().describe("AI prompt for AI type columns.  do reference other column by {columnName}"),
         tools: z.array(z.string()).describe("Array of MCP tools for AI columns in format 'server_name.tool_name'")
       },
     },
