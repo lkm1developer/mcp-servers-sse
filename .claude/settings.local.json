@@ -13,7 +13,9 @@
       "Bash(chmod:*)",
       "Bash(curl:*)",
       "Bash(node:*)",
-      "Bash(PORT=8081 node multi-mcp-server-production.js)"
+      "Bash(PORT=8081 node multi-mcp-server-production.js)",
+      "Read(//e/test/node_modules/smartlead-mcp-by-leadmagic/dist/scripts/**)",
+      "Read(//e/test/node_modules/smartlead-mcp-by-leadmagic/dist/src/**)"
     ],
     "deny": [],
     "ask": []
