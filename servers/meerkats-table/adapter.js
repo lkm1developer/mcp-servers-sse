@@ -10,9 +10,19 @@ import { log } from '../../multi-mcp-server-simple.js';
 export async function createServerAdapter(serverPath, apiKeyParam = 'MEERKATS_TABLE_API_KEY') {
   const toolsDefinitions = [
     {
+      name: "meerkats-table-create-table-by-file",
+      title: "Create a Meerkats Table by File",
+      description: "Create a new Meerkats Table from a file file must be csv",
+      inputSchema: {
+        table_name: z.string().describe("table name as uploaded filename"),
+        headers: z.array(z.string()).describe("column names in the csv file"), 
+        data: z.array(z.array(z.string())).describe("data in the csv filein array format [ [row1], [row2] ]")
+      }
+    },
+    {
       name: "meerkats-table-scrape-url",
       title: "Meerkats Table Scrape URL",
-      description: "Scrape a URL and return the content as markdown or HTML for table processing",
+      description: "Scrape a URL and return the content as markdown or HTML for table processing, do not attach this tool to a column",
       inputSchema: {
         url: z.string().describe("URL to scrape"),
         formats: z.array(z.enum(["markdown", "html"])).optional().describe("Content formats to extract (default: ['markdown'])"),
@@ -26,7 +36,7 @@ export async function createServerAdapter(serverPath, apiKeyParam = 'MEERKATS_TA
     {
       name: "meerkats-table-web-search",
       title: "Meerkats Table Web Search",
-      description: "Search the web and return results for table processing",
+      description: "Search the web and return results for table processing, do not attach this tool to a column",
       inputSchema: {
         query: z.string().describe("Query to search for on the web")
       }
@@ -631,6 +641,21 @@ export async function createServerAdapter(serverPath, apiKeyParam = 'MEERKATS_TA
         }]
       };
     },
+async "meerkats-table-create-table-by-file"(args, accessToken) {
+      const result = await makeAuthenticatedApiRequest(
+        `/automations/uploadCsv`,
+        'POST',
+        args,
+        accessToken
+      );
+
+      return {
+        content: [{
+          type: "text",
+          text: `Table created:\n${JSON.stringify(result, null, 2)}`
+        }]
+      };
+    },
 
     async get_table(args, accessToken) {
       const result = await makeAuthenticatedApiRequest(
@@ -859,12 +884,7 @@ export async function createServerAdapter(serverPath, apiKeyParam = 'MEERKATS_TA
 
     async add_table_column(args, accessToken) {
       // Validate AI columns have required tools in servername.toolname format
-      if (args.type === 'AI') {
-        if (!args.tools || args.tools.length === 0) {
-          throw new Error('AI columns must specify at least one tool in "servername.toolname" format');
-        }
-
-        // Validate tools format
+      if (args.type === 'AI' && args.tools && args.tools.length > 0) {
         for (const tool of args.tools) {
           if (!tool.includes('.')) {
             throw new Error(`Tool "${tool}" must be in "servername.toolname" format`);
@@ -924,8 +944,6 @@ export async function createServerAdapter(serverPath, apiKeyParam = 'MEERKATS_TA
           }
         }
       }
-
-      console.log(`Validated columns:`, columns);
       const result = await makeAuthenticatedApiRequest(
         `/automations/${args.tableId}/columns`,
         'POST',
@@ -943,17 +961,13 @@ export async function createServerAdapter(serverPath, apiKeyParam = 'MEERKATS_TA
     async update_table_column(args, accessToken) {
       // Validate AI columns have required tools in servername.toolname format
       if (args.type === 'AI') {
-        if (!args.tools || args.tools.length === 0) {
-          throw new Error('AI columns must specify at least one tool in "servername.toolname" format');
-        }
-
-        // Validate tools format
+        if (args.tools && args.tools.length > 0) {
         for (const tool of args.tools) {
           if (!tool.includes('.')) {
             throw new Error(`Tool "${tool}" must be in "servername.toolname" format`);
           }
         }
-      }
+      }}
 
       const result = await makeAuthenticatedApiRequest(
         `/automations/${args.tableId}/columns/${args.columnId}`,
