@@ -1,9 +1,9 @@
-import mongoose from 'mongoose';
+import mongoose from 'mongoose'
+const Schema = mongoose.Schema
 
-const Schema = mongoose.Schema;
-
-const mcpServerUserSchema = new Schema(
+const mcpServerSchema = new Schema(
     {
+        
         serverId: {
             type: Schema.Types.ObjectId,
             ref: 'McpServer',
@@ -25,14 +25,16 @@ const mcpServerUserSchema = new Schema(
         enabled: {
             type: Boolean,
             required: true,
-            default: true,
         },
+        isOAuth:{
+             type: Boolean,
+            required: true,
+        },
+        oAuthData:{
+            type:Schema.Types.Mixed
+        }
     },
     { timestamps: true }
-);
+)
 
-// Index for efficient API key lookups
-mcpServerUserSchema.index({ apiKey: 1, enabled: 1 });
-mcpServerUserSchema.index({ userId: 1, serverId: 1 }, { unique: true });
-
-export default mongoose.model('McpServerUser', mcpServerUserSchema);
+export default mongoose.model('McpServerUser', mcpServerSchema)

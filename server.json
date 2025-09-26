@@ -108,20 +108,20 @@
       "entryFile": "adapter.js",
       "apiKeyParam": "ICYPEAS_API_KEY"
     },
-    "googlesheets": {
+    "google-sheets": {
       "name": "Google Sheets MCP Server",
       "version": "1.0.0",
       "description": "Google Sheets integration for spreadsheet creation, editing, and management",
-      "directory": "./servers/googlesheets",
+      "directory": "./servers/google-sheets",
       "enabled": true,
       "entryFile": "adapter.js",
       "apiKeyParam": "GOOGLE_SHEETS_API_KEY"
     },
-    "googledocs": {
+    "google-docs": {
       "name": "Google Docs MCP Server",
       "version": "1.0.0",
       "description": "Google Docs integration for document creation, editing, and management",
-      "directory": "./servers/googledocs",
+      "directory": "./servers/google-docs",
       "enabled": true,
       "entryFile": "adapter.js",
       "apiKeyParam": "GOOGLE_DOCS_API_KEY"

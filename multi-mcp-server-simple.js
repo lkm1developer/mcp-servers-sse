@@ -46,7 +46,7 @@ try {
 export function log(serverName, message, data = null) {
   const timestamp = new Date().toISOString();
   const logEntry = `[${timestamp}] [${serverName}] ${message}${data ? '\\n' + JSON.stringify(data, null, 2) : ''}\\n`;
-  
+
   try {
     console.log(`[${serverName}] ${message}`, data || '');
     fs.appendFileSync(LOG_FILE, logEntry);
@@ -63,7 +63,7 @@ const serverAdapters = new Map();
 
 async function loadServerAdapters() {
   log('MANAGER', 'Loading server adapters...');
-  
+
   for (const [serverName, serverConfig] of Object.entries(config.servers)) {
     if (!serverConfig.enabled) {
       log('MANAGER', `Server ${serverName} is disabled, skipping`);
@@ -80,7 +80,7 @@ async function loadServerAdapters() {
       }
 
       const serverModule = await import(`file://${entryFile}?t=${Date.now()}`);
-      
+
       let toolsDefinitions, toolHandlers;
       if (serverModule.toolsDefinitions && serverModule.toolHandlers) {
         toolsDefinitions = serverModule.toolsDefinitions;
@@ -103,13 +103,13 @@ async function loadServerAdapters() {
 
       // Initialize transport storage for this server
       serverTransports.set(serverName, new Map());
-      
+
       log('MANAGER', `Server adapter loaded: ${serverName}`);
     } catch (error) {
       log('MANAGER', `Failed to load server adapter ${serverName}`, { error: error.message });
     }
   }
-  
+
   log('MANAGER', `Loaded ${serverAdapters.size} server adapters`);
 }
 
@@ -136,7 +136,7 @@ async function validateApiKey(apiKey, serverName, userId, serverId) {
     }
 
     let result;
-    
+
     if (serverName === 'meerkats-table' && userId !== 'system') {
       const apiKeyDb = await ApiKey.findOne({ name: 'automation', userId, isActive: true });
       if (!apiKeyDb || apiKey !== apiKeyDb.key) {
@@ -152,7 +152,7 @@ async function validateApiKey(apiKey, serverName, userId, serverId) {
     } else if (userId === 'system') {
       const conObj = await getSystemConnection([`${serverName.toUpperCase()}_API_KEY`]);
       const dbApiKey = conObj[`${serverName.toUpperCase()}_API_KEY`];
-      
+
       if (!dbApiKey || apiKey !== dbApiKey) {
         result = { isValid: false, error: 'Invalid or disabled API key' };
       } else {
@@ -165,7 +165,6 @@ async function validateApiKey(apiKey, serverName, userId, serverId) {
       }
     } else {
       const mcpServerUser = await McpServerUser.findOne({
-        apiKey: apiKey,
         userId: userId,
         serverId: serverId,
         enabled: true
@@ -174,12 +173,17 @@ async function validateApiKey(apiKey, serverName, userId, serverId) {
       if (!mcpServerUser) {
         result = { isValid: false, error: 'Invalid or disabled API key' };
       } else {
-        result = {
-          isValid: true,
-          userId: mcpServerUser.userId,
-          serverId: mcpServerUser.serverId,
-          rateLimit: mcpServerUser.rateLimit
-        };
+        const localApiKey = mcpServerUser.isOAuth ? mcpServerUser.oAuthData.access_token : mcpServerUser.apiKey;
+        if (apiKey !== localApiKey) {
+          result = { isValid: false, error: 'Invalid or disabled API key' };
+        } else {
+          result = {
+            isValid: true,
+            userId: mcpServerUser.userId,
+            serverId: mcpServerUser.serverId,
+            rateLimit: mcpServerUser.rateLimit
+          };
+        }
       }
     }
 
@@ -227,7 +231,6 @@ app.get('/health', (req, res) => {
 // Main MCP handler - SIMPLIFIED like your working server
 app.post('/:serverName/mcp', async (req, res) => {
   const { serverName } = req.params;
-
   try {
     // Check if server adapter exists
     const serverAdapter = serverAdapters.get(serverName);
@@ -240,7 +243,7 @@ app.post('/:serverName/mcp', async (req, res) => {
 
     // Get server transports
     const transports = serverTransports.get(serverName);
-    
+
     // Check for existing session ID
     const sessionId = req.headers['mcp-session-id'];
     let transport;
@@ -265,11 +268,10 @@ app.post('/:serverName/mcp', async (req, res) => {
         decoded = jwt.verify(token, JWT_SECRET);
       } catch (jwtError) {
         return res.status(401).json({
-          jsonrpc: '2.0', 
+          jsonrpc: '2.0',
           error: { code: -32000, message: 'Invalid JWT token' }
         });
       }
-
       const { userId, serverId, apiKey: userApiKey } = decoded;
 
       // Validate API key
@@ -288,7 +290,7 @@ app.post('/:serverName/mcp', async (req, res) => {
           transport.sessionId = newSessionId;
           transport.userApiKey = userApiKey;
           transport.userId = apiKeyValidation.userId;
-          
+
           transports.set(newSessionId, transport);
           log(serverName, `New session initialized: ${newSessionId}`);
         },
@@ -341,7 +343,7 @@ app.post('/:serverName/mcp', async (req, res) => {
 
       // Connect transport to THIS server instance
       await mcpServer.connect(transport);
-      
+
       log(serverName, 'New MCP server instance created and connected');
     } else {
       return res.status(400).json({
@@ -355,7 +357,7 @@ app.post('/:serverName/mcp', async (req, res) => {
 
   } catch (error) {
     log(serverName, 'Request handling error', { error: error.message, stack: error.stack });
-    
+
     if (!res.headersSent) {
       res.status(500).json({
         jsonrpc: '2.0',
@@ -395,7 +397,7 @@ app.delete('/:serverName/mcp', handleSessionRequest);
 // Simple cleanup every 5 minutes - like your working server
 setInterval(() => {
   let totalCleaned = 0;
-  
+
   for (const [serverName, transports] of serverTransports.entries()) {
     let cleaned = 0;
     for (const [sessionId, transport] of transports.entries()) {
@@ -409,13 +411,13 @@ setInterval(() => {
         cleaned++;
       }
     }
-    
+
     if (cleaned > 0) {
       log(serverName, `Cleaned up ${cleaned} inactive sessions`);
       totalCleaned += cleaned;
     }
   }
-  
+
   if (totalCleaned > 0) {
     log('CLEANUP', `Total sessions cleaned: ${totalCleaned}`);
   }
@@ -475,7 +477,7 @@ process.on('SIGINT', () => shutdown('SIGINT'));
 async function startServer() {
   try {
     log('MAIN', 'Starting Multi-MCP Simple Server...');
-    
+
     // Initialize database
     await initDatabase();
     log('MAIN', '✅ Database connected successfully');
