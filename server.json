@@ -9,6 +9,15 @@
       "entryFile": "index.js",
       "apiKeyParam": "FIRECRAWL_API_KEY"
     },
+    "gmail": {
+      "name": "Gmail MCP Server",
+      "version": "1.3.2",
+      "description": "Gmail server",
+      "directory": "./servers/gmail",
+      "enabled": true,
+      "entryFile": "adapter.js",
+      "apiKeyParam": "GMAIL_ACCESS_TOKEN"
+    },
     "tavily": {
       "name": "Tavily MCP Server",
       "version": "0.2.9",
