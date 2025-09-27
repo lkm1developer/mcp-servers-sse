@@ -12,7 +12,6 @@ import path from 'path';
 import dotenv from 'dotenv';
 import { initDatabase, closeDatabase, isDatabaseConnected, getSystemConnection } from './utils/database.js';
 import McpServerUser from './models/McpServerUser.js';
-import McpServerDb from './models/McpServer.js';
 import ApiKey from './models/ApiKey.js';
 
 dotenv.config();
@@ -125,6 +124,7 @@ async function validateApiKey(apiKey, serverName, userId, serverId) {
     }
 
     if (!apiKey) {
+      log('AUTH_FAILED', JSON.stringify({apiKey, serverName, userId, serverId}));
       return { isValid: false, error: 'API key is required' };
     }
 
