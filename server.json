@@ -37,7 +37,7 @@
       "apiKeyParam": "HUBSPOT_ACCESS_TOKEN"
     },
     "apollo": {
-      "name": "Apollo.io MCP Server", 
+      "name": "Apollo.io MCP Server",
       "version": "1.0.0",
       "description": "Apollo.io integration for people and organization search, enrichment, and data discovery",
       "directory": "./servers/apollo",
@@ -162,7 +162,7 @@
       "entryFile": "adapter.js",
       "apiKeyParam": "MEERKATS_API_KEY"
     },
-    "smartlead":{
+    "smartlead": {
       "name": "SmartLead MCP Server",
       "version": "1.0.0",
       "description": "SmartLead integration for email finding and verification",
@@ -170,6 +170,16 @@
       "enabled": true,
       "entryFile": "adapter.js",
       "apiKeyParam": "SMARTLEAD_API_KEY"
+    },
+    "slack": {
+      "name": "slack",
+      "version": "1.0.0",
+      "description": "Slack MCP Server for messaging and workspace operations with OAuth access token authentication",
+      "apiKeyParam": "SLACK_ACCESS_TOKEN",
+      "adapter": "./adapter.js",
+      "directory": "./servers/slack",
+      "enabled": true,
+      "entryFile": "adapter.js"
     }
   },
   "global": {
@@ -178,6 +188,9 @@
     "session_cleanup_interval": 300000,
     "log_file": "multi-mcp-debug.log",
     "enable_dns_rebinding_protection": false,
-    "supported_protocol_versions": ["2025-06-18", "2024-11-05"]
+    "supported_protocol_versions": [
+      "2025-06-18",
+      "2024-11-05"
+    ]
   }
 }

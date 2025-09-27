@@ -1,0 +1,17 @@
+{
+  "name": "slack",
+  "version": "1.0.0",
+  "description": "Slack MCP Server for messaging and workspace operations with OAuth access token authentication",
+  "apiKeyParam": "SLACK_ACCESS_TOKEN",
+  "adapter": "./adapter.js",
+  "tools": [
+    "slack-send-message",
+    "slack-list-channels",
+    "slack-get-channel-info",
+    "slack-list-users",
+    "slack-get-user-info",
+    "slack-get-channel-history",
+    "slack-update-message",
+    "slack-delete-message"
+  ]
+}
