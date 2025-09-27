@@ -4,7 +4,7 @@ import { google } from 'googleapis';
 import { log } from '../../multi-mcp-server-simple.js';
 
 /**
- * Gmail MCP Server adapter for multi-MCP system
+ * Gmail MCP Server adapter for multi-MCP system 
  */
 export async function createServerAdapter(serverPath, apiKeyParam = 'GMAIL_CREDENTIALS') {
 
