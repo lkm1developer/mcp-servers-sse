@@ -12,7 +12,6 @@ import path from 'path';
 import dotenv from 'dotenv';
 import { initDatabase, closeDatabase, isDatabaseConnected, getSystemConnection } from './utils/database.js';
 import McpServerUser from './models/McpServerUser.js';
-import ApiKey from './models/ApiKey.js';
 
 dotenv.config();
 
@@ -137,19 +136,7 @@ async function validateApiKey(apiKey, serverName, userId, serverId) {
 
     let result;
 
-    if (serverName === 'meerkats-table' && userId !== 'system') {
-      const apiKeyDb = await ApiKey.findOne({ name: 'automation', userId, isActive: true });
-      if (!apiKeyDb || apiKey !== apiKeyDb.key) {
-        result = { isValid: false, error: 'Invalid or disabled API key' };
-      } else {
-        result = {
-          isValid: true,
-          userId: apiKeyDb.userId,
-          serverId: 'meerkats-table',
-          rateLimit: null
-        };
-      }
-    } else if (userId === 'system') {
+    if (userId === 'system') {
       const conObj = await getSystemConnection([`${serverName.toUpperCase()}_API_KEY`]);
       const dbApiKey = conObj[`${serverName.toUpperCase()}_API_KEY`];
 
@@ -175,7 +162,7 @@ async function validateApiKey(apiKey, serverName, userId, serverId) {
       } else {
         const localApiKey = mcpServerUser.isOAuth ? mcpServerUser.oAuthData.access_token : mcpServerUser.apiKey;
         if (apiKey !== localApiKey) {
-          result = { isValid: false, error: 'Invalid or disabled API key' };
+          result = { isValid: false, error: 'Invalid or disabled API key 2' };
         } else {
           result = {
             isValid: true,
@@ -255,6 +242,7 @@ app.post('/:serverName/mcp', async (req, res) => {
     } else if (!sessionId && isInitializeRequest(req.body)) {
       // New initialization request - validate JWT
       const authHeader = req.headers.authorization;
+      log('authHeader', authHeader);
       if (!authHeader || !authHeader.startsWith('Bearer ')) {
         return res.status(401).json({
           jsonrpc: '2.0',
@@ -272,10 +260,11 @@ app.post('/:serverName/mcp', async (req, res) => {
           error: { code: -32000, message: 'Invalid JWT token' }
         });
       }
-      const { userId, serverId, apiKey: userApiKey } = decoded;
-
+      const { userId, serverId, apiKey: userApiKey, serverName } = decoded;
+      log('decoded', JSON.stringify(decoded));
       // Validate API key
       const apiKeyValidation = await validateApiKey(userApiKey, serverName, userId, serverId);
+      log('apiKeyValidation', JSON.stringify(apiKeyValidation));
       if (!apiKeyValidation.isValid) {
         return res.status(403).json({
           jsonrpc: '2.0',
@@ -288,7 +277,7 @@ app.post('/:serverName/mcp', async (req, res) => {
         sessionIdGenerator: () => randomUUID(),
         onsessioninitialized: (newSessionId) => {
           transport.sessionId = newSessionId;
-          transport.userApiKey = userApiKey;
+          transport.userApiKey = serverName==='meerkats-table' ? token: userApiKey ;
           transport.userId = apiKeyValidation.userId;
 
           transports.set(newSessionId, transport);
