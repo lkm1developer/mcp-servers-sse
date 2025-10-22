@@ -10,10 +10,17 @@ import { isInitializeRequest } from '@modelcontextprotocol/sdk/types.js';
 import fs from 'fs';
 import path from 'path';
 import dotenv from 'dotenv';
-import { initDatabase, closeDatabase, isDatabaseConnected, getSystemConnection } from './utils/database.js';
-import McpServerUser from './models/McpServerUser.js';
+import { createClient } from '@supabase/supabase-js';
+import pkg from 'crypto-js';
+const { AES, enc } = pkg;
 
 dotenv.config();
+
+// Initialize Supabase client
+const supabase = createClient(
+  process.env.SUPABASE_URL,
+  process.env.SUPABASE_SERVICE_ROLE_KEY
+);
 
 // Load configuration
 const configPath = path.join(process.cwd(), 'server.json');
@@ -53,7 +60,7 @@ export function log(serverName, message, data = null) {
   }
 }
 
-// Simple transport storage per server - KEY INSIGHT FROM WORKING SERVER
+// Simple transport storage per server
 const serverTransports = new Map(); // serverName -> { sessionId -> transport }
 
 // Load server adapters
@@ -111,17 +118,52 @@ async function loadServerAdapters() {
   log('MANAGER', `Loaded ${serverAdapters.size} server adapters`);
 }
 
+// Encryption/Decryption helper functions
+export const getEncryptionKey = () => {
+  return process.env.ENCRYPTION_KEY ?? 'ddsf%@#%#dfdfdfvbvdf546456dfcxgvdfgvfdg'; // Default for dev only
+};
+
+const decryptCredentialData = (encryptedData) => {
+  const encryptKey = getEncryptionKey();
+  const decryptedData = AES.decrypt(encryptedData, encryptKey);
+  try {
+    const plainDataObj = JSON.parse(decryptedData.toString(enc.Utf8));
+    return plainDataObj;
+  } catch (e) {
+    console.error(e);
+    throw new Error('Credentials could not be decrypted.');
+  }
+};
+
+// Get system connection using Supabase
+export const getSystemConnection = async (keys) => {
+  let obj = {}
+  const { data: secrets, error } = await supabase
+    .from('connections')
+    .select('*')
+    .eq('is_system', true)
+    .eq('type', 'vault')
+    .in('name', keys)
+
+  if (error || !secrets) {
+    throw new AppError(404, 'Secret not found');
+  }
+  await Promise.all(secrets.map(async (secret) => {
+    if (secret.data) {
+      obj[secret.name] = decryptCredentialData(secret.data);
+    }
+  }))
+
+  return obj;
+};
+
+
 // API Key validation with caching
 const apiKeyCache = new Map();
 const CACHE_TTL = 300000; // 5 minutes
 
 async function validateApiKey(apiKey, serverName, userId, serverId) {
   try {
-    if (!isDatabaseConnected()) {
-      log('AUTH', 'Database connection required for API key validation');
-      return { isValid: false, error: 'Database connection unavailable' };
-    }
-
     if (!apiKey) {
       log('AUTH_FAILED', JSON.stringify({apiKey, serverName, userId, serverId}));
       return { isValid: false, error: 'API key is required' };
@@ -151,24 +193,27 @@ async function validateApiKey(apiKey, serverName, userId, serverId) {
         };
       }
     } else {
-      const mcpServerUser = await McpServerUser.findOne({
-        userId: userId,
-        serverId: serverId,
-        enabled: true
-      });
+      // Query using Supabase
+      const { data: mcpServerUser, error } = await supabase
+        .from('mcp_server_users')
+        .select('*')
+        .eq('user_id', userId)
+        .eq('server_id', serverId)
+        .eq('enabled', true)
+        .single();
 
-      if (!mcpServerUser) {
+      if (error || !mcpServerUser) {
         result = { isValid: false, error: 'Invalid or disabled API key' };
       } else {
-        const localApiKey = mcpServerUser.isOAuth ? mcpServerUser.oAuthData.access_token : mcpServerUser.apiKey;
+        const localApiKey = mcpServerUser.is_oauth ? mcpServerUser.oauth_data?.access_token : mcpServerUser.api_key;
         if (apiKey !== localApiKey) {
           result = { isValid: false, error: 'Invalid or disabled API key 2' };
         } else {
           result = {
             isValid: true,
-            userId: mcpServerUser.userId,
-            serverId: mcpServerUser.serverId,
-            rateLimit: mcpServerUser.rateLimit
+            userId: mcpServerUser.user_id,
+            serverId: mcpServerUser.server_id,
+            rateLimit: mcpServerUser.rate_limit
           };
         }
       }
@@ -206,16 +251,17 @@ app.get('/health', (req, res) => {
   res.json({
     status: 'healthy',
     timestamp: new Date().toISOString(),
-    version: '2.0.0-simple',
+    version: '2.0.0-supabase',
     transport: 'streamable-http',
     auth_type: 'jwt',
+    database: 'supabase',
     servers: Array.from(serverAdapters.keys()),
     totalSessions,
     loadedServers: serverAdapters.size
   });
 });
 
-// Main MCP handler - SIMPLIFIED like your working server
+// Main MCP handler
 app.post('/:serverName/mcp', async (req, res) => {
   const { serverName } = req.params;
   try {
@@ -294,7 +340,7 @@ app.post('/:serverName/mcp', async (req, res) => {
         }
       };
 
-      // CREATE FRESH MCP SERVER INSTANCE PER SESSION - KEY INSIGHT!
+      // CREATE FRESH MCP SERVER INSTANCE PER SESSION
       const mcpServer = new McpServer({
         name: serverAdapter.name,
         version: serverAdapter.version
@@ -356,7 +402,7 @@ app.post('/:serverName/mcp', async (req, res) => {
   }
 });
 
-// SSE endpoint - simplified like your working server
+// SSE endpoint
 const handleSessionRequest = async (req, res) => {
   const { serverName } = req.params;
   const sessionId = req.headers['mcp-session-id'];
@@ -383,7 +429,7 @@ const handleSessionRequest = async (req, res) => {
 app.get('/:serverName/mcp', handleSessionRequest);
 app.delete('/:serverName/mcp', handleSessionRequest);
 
-// Simple cleanup every 5 minutes - like your working server
+// Simple cleanup every 5 minutes
 setInterval(() => {
   let totalCleaned = 0;
 
@@ -415,9 +461,10 @@ setInterval(() => {
 // Root endpoint
 app.get('/', (req, res) => {
   res.json({
-    name: 'Multi-MCP Simple Server',
-    version: '2.0.0-simple',
+    name: 'Multi-MCP Simple Server (Supabase)',
+    version: '2.0.0-supabase',
     status: 'running',
+    database: 'supabase',
     servers: Array.from(serverAdapters.keys()),
     endpoints: [
       'GET /health - Health check',
@@ -446,16 +493,7 @@ const shutdown = async (signal) => {
     }
   }
 
-  // Close database connection
-  try {
-    if (isDatabaseConnected()) {
-      await closeDatabase();
-      log('MAIN', '✅ Database connection closed');
-    }
-  } catch (error) {
-    console.error('Error closing database connection:', error);
-  }
-
+  log('MAIN', '✅ Graceful shutdown complete');
   process.exit(0);
 };
 
@@ -465,11 +503,14 @@ process.on('SIGINT', () => shutdown('SIGINT'));
 // Start the server
 async function startServer() {
   try {
-    log('MAIN', 'Starting Multi-MCP Simple Server...');
+    log('MAIN', 'Starting Multi-MCP Simple Server (Supabase)...');
 
-    // Initialize database
-    await initDatabase();
-    log('MAIN', '✅ Database connected successfully');
+    // Test Supabase connection
+    const { data, error } = await supabase.from('mcp_servers').select('id').limit(1);
+    if (error) {
+      throw new Error(`Supabase connection failed: ${error.message}`);
+    }
+    log('MAIN', '✅ Supabase connected successfully');
 
     // Load server adapters
     await loadServerAdapters();
@@ -477,9 +518,9 @@ async function startServer() {
 
     // Start HTTP server
     app.listen(port, '0.0.0.0', () => {
-      log('MAIN', `🚀 Multi-MCP Simple Server running on port ${port}`);
+      log('MAIN', `🚀 Multi-MCP Simple Server (Supabase) running on port ${port}`);
       log('MAIN', `📊 Health check: http://localhost:${port}/health`);
-      log('MAIN', `🔗 Based on proven architecture that handles 400+ concurrent requests`);
+      log('MAIN', `🔗 Database: Supabase PostgreSQL`);
     });
 
   } catch (error) {

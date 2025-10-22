@@ -1,16 +1,17 @@
-import mongoose from 'mongoose';
+import { createClient } from '@supabase/supabase-js';
 import fs from 'fs';
 import path from 'path';
-import Connections from '../models/Connections.js';
 import pkg from 'crypto-js';
 const { AES, enc } = pkg;
+
+let supabase = null;
 let isConnected = false;
 
 // Initialize logs directory function
 function initializeLogsDirectory() {
   const logsDir = path.join(process.cwd(), 'logs');
   const LOG_FILE = path.join(logsDir, 'multi-mcp-debug.log');
-  
+
   try {
     if (!fs.existsSync(logsDir)) {
       fs.mkdirSync(logsDir, { recursive: true });
@@ -18,14 +19,14 @@ function initializeLogsDirectory() {
   } catch (error) {
     console.error('❌ Cannot create logs directory:', error.message);
   }
-  
+
   return LOG_FILE;
 }
 
 function log(message, data = null) {
   const timestamp = new Date().toISOString();
   const logEntry = `[${timestamp}] [DATABASE] ${message}${data ? '\n' + JSON.stringify(data, null, 2) : ''}\n`;
-  
+
   try {
     console.log(`[DATABASE] ${message}`, data || '');
     const LOG_FILE = initializeLogsDirectory();
@@ -42,47 +43,42 @@ export async function initDatabase() {
   }
 
   try {
-    const uri = process.env.MONGO_URL;
-    if (!uri) {
-      throw new Error('MONGO_URL environment variable is required');
+    const supabaseUrl = process.env.SUPABASE_URL;
+    const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+    if (!supabaseUrl || !supabaseKey) {
+      throw new Error('SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY environment variables are required');
     }
 
-    await mongoose.connect(uri, {
-      useNewUrlParser: true,
-      useUnifiedTopology: true,
-    });
+    // Initialize Supabase client
+    supabase = createClient(supabaseUrl, supabaseKey);
+
+    // Test connection
+    const { data, error } = await supabase
+      .from('mcp_servers')
+      .select('id')
+      .limit(1);
+
+    if (error) {
+      throw new Error(`Supabase connection test failed: ${error.message}`);
+    }
 
     isConnected = true;
-    log('Connected to MongoDB successfully');
-
-    // Handle connection events
-    mongoose.connection.on('error', (error) => {
-      log('MongoDB connection error', { error: error.message });
-    });
-
-    mongoose.connection.on('disconnected', () => {
-      log('MongoDB disconnected');
-      isConnected = false;
-    });
-
-    mongoose.connection.on('reconnected', () => {
-      log('MongoDB reconnected');
-      isConnected = true;
-    });
+    log('Connected to Supabase successfully');
 
   } catch (error) {
-    log('Failed to connect to MongoDB', { error: error.message });
+    log('Failed to connect to Supabase', { error: error.message });
     throw error;
   }
 }
 
 export async function closeDatabase() {
   try {
-    if (mongoose.connection.readyState === 1) {
-      await mongoose.connection.close();
-      isConnected = false;
-      log('Database connection closed');
-    }
+    // Supabase doesn't require explicit connection closing
+    // Just reset the connection state
+    isConnected = false;
+    supabase = null;
+    log('Database connection closed');
   } catch (error) {
     log('Error closing database connection', { error: error.message });
     throw error;
@@ -90,48 +86,89 @@ export async function closeDatabase() {
 }
 
 export function isDatabaseConnected() {
-  return isConnected && mongoose.connection.readyState === 1;
+  return isConnected && supabase !== null;
 }
+
+export function getSupabaseClient() {
+  if (!supabase) {
+    throw new Error('Supabase client not initialized. Call initDatabase() first.');
+  }
+  return supabase;
+}
+
 export const getEncryptionKey = async () => {
-    const encryptKey = process.env.ENCRYPTION_KEY ?? ''
-    return encryptKey
-}
+  const encryptKey = process.env.ENCRYPTION_KEY ?? '';
+  return encryptKey;
+};
+
 export const decryptCredentialData = async (encryptedData) => {
-    const encryptKey = await getEncryptionKey()
-    const decryptedData = AES.decrypt(encryptedData, encryptKey)
-    try {
-        const plainDataObj = JSON.parse(decryptedData.toString(enc.Utf8))
-        return plainDataObj
-    } catch (e) {
-        console.error(e)
-        throw new Error('Credentials could not be decrypted.')
-    }
-}
+  const encryptKey = await getEncryptionKey();
+  const decryptedData = AES.decrypt(encryptedData, encryptKey);
+  try {
+    const plainDataObj = JSON.parse(decryptedData.toString(enc.Utf8));
+    return plainDataObj;
+  } catch (e) {
+    console.error(e);
+    throw new Error('Credentials could not be decrypted.');
+  }
+};
+
 export async function getSystemConnection(pieceNames, userId) {
-    try {
-        let obj = {}
-        let where = { pieceName: { $in: pieceNames }, isSystem: true }
-        if (userId) {
-            where = { pieceName: { $in: pieceNames }, userId }
-        }
-        const connections = await Connections.find(where).sort({ updatedAt: -1 })
-        if (connections) {
-            for (const connection of connections) {
-                if (connection && connection.data) {
-                    try {
-                        const value = await decryptCredentialData(connection.data)
-                        obj[connection.pieceName] = value
-                    } catch (error) {
-                        obj[connection.pieceName] = ''
-                    }
-                } else {
-                    obj[connection.pieceName] = ''
-                }
-            }
-        }
-        return obj
-    } catch (error) {
-        console.log('getConnectionValue', error)
-        return {}
+  try {
+    if (!isDatabaseConnected()) {
+      log('Database connection required for getSystemConnection');
+      return {};
     }
+
+    let obj = {};
+
+    // Build query based on whether userId is provided
+    let query = supabase
+      .from('connections')
+      .select('*')
+      .in('name', pieceNames)
+      .order('updated_at', { ascending: false });
+
+    if (userId) {
+      query = query.eq('user_id', userId);
+    } else {
+      query = query.eq('is_system', true);
+    }
+
+    const { data: connections, error } = await query;
+
+    if (error) {
+      log('Error fetching connections', { error: error.message });
+      return {};
+    }
+
+    if (connections) {
+      for (const connection of connections) {
+        if (connection && connection.data) {
+          try {
+            const value = await decryptCredentialData(connection.data);
+            obj[connection.name] = value;
+          } catch (error) {
+            obj[connection.name] = '';
+          }
+        } else {
+          obj[connection.name] = '';
+        }
+      }
+    }
+    return obj;
+  } catch (error) {
+    log('getSystemConnection error', { error: error.message });
+    return {};
+  }
 }
+
+export default {
+  initDatabase,
+  closeDatabase,
+  isDatabaseConnected,
+  getSupabaseClient,
+  getEncryptionKey,
+  decryptCredentialData,
+  getSystemConnection
+};
