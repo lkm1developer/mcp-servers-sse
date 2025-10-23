@@ -162,15 +162,15 @@ export const getSystemConnection = async (keys) => {
 const apiKeyCache = new Map();
 const CACHE_TTL = 300000; // 5 minutes
 
-async function validateApiKey(apiKey, serverName, userId, serverId) {
+async function validateApiKey(apiKey, serverName, user_id, serverId) {
   try {
     if (!apiKey) {
-      log('AUTH_FAILED', JSON.stringify({apiKey, serverName, userId, serverId}));
+      log('AUTH_FAILED', JSON.stringify({apiKey, serverName, user_id, serverId}));
       return { isValid: false, error: 'API key is required' };
     }
 
     // Check cache first
-    const cacheKey = `${apiKey}-${userId}-${serverId}`;
+    const cacheKey = `${apiKey}-${user_id}-${serverId}`;
     const cached = apiKeyCache.get(cacheKey);
     if (cached && (Date.now() - cached.timestamp) < CACHE_TTL) {
       return cached.result;
@@ -178,7 +178,7 @@ async function validateApiKey(apiKey, serverName, userId, serverId) {
 
     let result;
 
-    if (userId === 'system') {
+    if (user_id === 'system') {
       const conObj = await getSystemConnection([`${serverName.toUpperCase()}_API_KEY`]);
       const dbApiKey = conObj[`${serverName.toUpperCase()}_API_KEY`];
 
@@ -187,7 +187,7 @@ async function validateApiKey(apiKey, serverName, userId, serverId) {
       } else {
         result = {
           isValid: true,
-          userId: 'system',
+          user_id: 'system',
           serverId: serverId,
           rateLimit: null
         };
@@ -197,7 +197,7 @@ async function validateApiKey(apiKey, serverName, userId, serverId) {
       const { data: mcpServerUser, error } = await supabase
         .from('mcp_server_users')
         .select('*')
-        .eq('user_id', userId)
+        .eq('user_id', user_id)
         .eq('server_id', serverId)
         .eq('enabled', true)
         .single();
@@ -211,7 +211,7 @@ async function validateApiKey(apiKey, serverName, userId, serverId) {
         } else {
           result = {
             isValid: true,
-            userId: mcpServerUser.user_id,
+            user_id: mcpServerUser.user_id,
             serverId: mcpServerUser.server_id,
             rateLimit: mcpServerUser.rate_limit
           };
@@ -288,7 +288,6 @@ app.post('/:serverName/mcp', async (req, res) => {
     } else if (!sessionId && isInitializeRequest(req.body)) {
       // New initialization request - validate JWT
       const authHeader = req.headers.authorization;
-      log('authHeader', authHeader);
       if (!authHeader || !authHeader.startsWith('Bearer ')) {
         return res.status(401).json({
           jsonrpc: '2.0',
@@ -306,11 +305,9 @@ app.post('/:serverName/mcp', async (req, res) => {
           error: { code: -32000, message: 'Invalid JWT token' }
         });
       }
-      const { userId, serverId, apiKey: userApiKey, serverName } = decoded;
-      log('decoded', JSON.stringify(decoded));
+      const { user_id, serverId, apiKey: userApiKey, serverName } = decoded;
       // Validate API key
-      const apiKeyValidation = await validateApiKey(userApiKey, serverName, userId, serverId);
-      log('apiKeyValidation', JSON.stringify(apiKeyValidation));
+      const apiKeyValidation = await validateApiKey(userApiKey, serverName, user_id, serverId);
       if (!apiKeyValidation.isValid) {
         return res.status(403).json({
           jsonrpc: '2.0',
@@ -324,7 +321,7 @@ app.post('/:serverName/mcp', async (req, res) => {
         onsessioninitialized: (newSessionId) => {
           transport.sessionId = newSessionId;
           transport.userApiKey = serverName==='meerkats-table' ? token: userApiKey ;
-          transport.userId = apiKeyValidation.userId;
+          transport.user_id = apiKeyValidation.user_id;
 
           transports.set(newSessionId, transport);
           log(serverName, `New session initialized: ${newSessionId}`);
@@ -365,7 +362,7 @@ app.post('/:serverName/mcp', async (req, res) => {
             }
 
             try {
-              const result = await handler(args, transport.userApiKey, transport.userId);
+              const result = await handler(args, transport.userApiKey, transport.user_id);
               log(serverName, `Tool completed: ${toolDef.name}`, { success: true });
               return result;
             } catch (error) {
