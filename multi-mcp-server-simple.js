@@ -164,6 +164,7 @@ const CACHE_TTL = 300000; // 5 minutes
 
 async function validateApiKey(apiKey, serverName, user_id, serverId) {
   try {
+      log('AUTH_FAILED', JSON.stringify({apiKey, serverName, user_id, serverId}));
     if (!apiKey) {
       log('AUTH_FAILED', JSON.stringify({apiKey, serverName, user_id, serverId}));
       return { isValid: false, error: 'API key is required' };
@@ -181,7 +182,7 @@ async function validateApiKey(apiKey, serverName, user_id, serverId) {
     if (user_id === 'system') {
       const conObj = await getSystemConnection([`${serverName.toUpperCase()}_API_KEY`]);
       const dbApiKey = conObj[`${serverName.toUpperCase()}_API_KEY`];
-
+      log('AUTH_FAILED', JSON.stringify({apiKey, serverName, user_id, serverId, dbApiKey}));
       if (!dbApiKey || apiKey !== dbApiKey) {
         result = { isValid: false, error: 'Invalid or disabled API key' };
       } else {
@@ -305,9 +306,9 @@ app.post('/:serverName/mcp', async (req, res) => {
           error: { code: -32000, message: 'Invalid JWT token' }
         });
       }
-      const { user_id, serverId, apiKey: userApiKey, serverName } = decoded;
+      const { userId, serverId, apiKey: userApiKey, serverName } = decoded;
       // Validate API key
-      const apiKeyValidation = await validateApiKey(userApiKey, serverName, user_id, serverId);
+      const apiKeyValidation = await validateApiKey(userApiKey, serverName, userId, serverId);
       if (!apiKeyValidation.isValid) {
         return res.status(403).json({
           jsonrpc: '2.0',
