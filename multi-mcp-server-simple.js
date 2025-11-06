@@ -201,7 +201,7 @@ async function validateApiKey(apiKey, serverName, user_id, serverId) {
         .eq('user_id', user_id)
         .eq('server_id', serverId)
         .eq('enabled', true)
-        .single();
+        .maybeSingle();
 
       if (error || !mcpServerUser) {
         result = { isValid: false, error: 'Invalid or disabled API key' };
