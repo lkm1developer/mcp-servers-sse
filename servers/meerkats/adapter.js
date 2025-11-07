@@ -111,6 +111,7 @@ export async function createServerAdapter(serverPath, apiKeyParam = 'MEERKATS_AP
       title: "Meerkats Google Places",
       description: "Get Google Maps Places API data for a search query",
       inputSchema: {
+        googleApiKey: z.string().describe("Google Maps API key"),
         query: z.string().describe("Search query for places")
       }
     }
@@ -579,70 +580,241 @@ chat your way to growth`
       }
 
       try {
-        // Use Google search with "places" context
-        const searchUrl = `https://www.google.com/search?q=${encodeURIComponent(args.query + ' places near me')}`;
+        const { query, location, googleApiKey } = args;
+        const maxResults = 200;
 
-        const response = await axios.get(searchUrl, {
-          headers: {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
-          },
-          timeout: 15000
-        });
-
-        // Basic extraction of place information
-        let content = response.data;
-        const places = [];
-
-        // Try to extract business listings and places
-        const businessRegex = /<div[^>]*class="[^"]*business[^"]*"[^>]*>.*?<span[^>]*>(.*?)<\/span>.*?<span[^>]*>(.*?)<\/span>/gis;
-        const placeRegex = /<h3[^>]*><a[^>]*>(.*?)<\/a><\/h3>.*?<span[^>]*>(.*?)<\/span>/gis;
-
-        let match;
-        let count = 0;
-
-        // Try business regex first
-        while ((match = businessRegex.exec(content)) && count < 10) {
-          const name = match[1].replace(/<[^>]+>/g, '').trim();
-          const info = match[2].replace(/<[^>]+>/g, '').trim();
-
-          if (name && name.length > 3 && !name.includes('Search') && !name.includes('Map')) {
-            places.push({
-              name: name.substring(0, 100),
-              info: info.substring(0, 150),
-              rank: count + 1,
-              type: 'Business'
-            });
-            count++;
-          }
+        if (!query) {
+          throw new Error('Search query is required');
         }
 
-        // If no businesses found, try general places
-        if (places.length === 0) {
-          while ((match = placeRegex.exec(content)) && count < 10) {
-            const name = match[1].replace(/<[^>]+>/g, '').trim();
-            const info = match[2].replace(/<[^>]+>/g, '').trim();
+        // Construct the text query based on the provided parameters
+        let textQuery = query;
 
-            if (name && name.length > 3 && !name.includes('Search') && !name.includes('Google')) {
-              places.push({
-                name: name.substring(0, 100),
-                info: info.substring(0, 150),
-                rank: count + 1,
-                type: 'Place'
-              });
-              count++;
+        // If location is provided, add it to the query
+        if (location) {
+          // Check if it's a zipcode (simple check for numeric-only string)
+          if (/^\d+$/.test(location)) {
+            textQuery += ` at ${location} USA`;
+            console.log(`Using zipcode in query: ${textQuery}`);
+          } else {
+            // Check if it looks like lat,lng format
+            const latLng = location.split(',');
+            if (latLng.length === 2) {
+              const [lat, lng] = latLng;
+
+              // Check if both parts are valid numbers
+              if (!isNaN(parseFloat(lat)) && !isNaN(parseFloat(lng))) {
+                // Check if coordinates are in valid ranges
+                const latNum = parseFloat(lat);
+                const lngNum = parseFloat(lng);
+
+                if (latNum >= -90 && latNum <= 90 && lngNum >= -180 && lngNum <= 180) {
+                  textQuery += ` near ${latNum},${lngNum}`;
+                  console.log(`Using coordinates in query: ${textQuery}`);
+                } else {
+                  console.warn(`Coordinates out of valid range: ${location}`);
+                  textQuery += ` ${location}`;
+                }
+              } else {
+                console.warn(`Invalid coordinate format (not numeric): ${location}`);
+                textQuery += ` ${location}`;
+              }
+            } else {
+              console.warn(`Invalid coordinate format (wrong format): ${location}`);
+              textQuery += ` ${location}`;
             }
           }
         }
+
+        // Use the Places API v1 to search for places
+        const url = 'https://places.googleapis.com/v1/places:searchText?fields=*';
+        console.log(`Making request to Google Places API v1: ${url}`);
+        console.log(`Text Query: ${textQuery}`);
+
+        // Array to store all places from multiple requests
+        let allPlaces = [];
+        let pagesFetched = 0;
+        let hasMore = false;
+        let pageToken = '';
+
+        // Function to make a request to the Places API
+        const fetchPlacesPage = async (token) => {
+          const requestBody = {
+            textQuery: textQuery
+          };
+
+          // Add page token if provided
+          if (token) {
+            requestBody.pageToken = token;
+          }
+
+          // Make the request with the new API format
+          const response = await axios.post(url, requestBody, {
+            headers: {
+              'Content-Type': 'application/json',
+              'X-Goog-Api-Key': googleApiKey || apiKey
+            }
+          });
+
+          return response;
+        };
+
+        // Make the initial request
+        let response = await fetchPlacesPage();
+
+        if (response.status !== 200) {
+          throw new Error('Failed to get places from Google Maps API');
+        }
+
+        // Check if we have places in the response
+        if (!response.data.places || !Array.isArray(response.data.places)) {
+          throw new Error('No places found in API response');
+        }
+
+        // Add places from the first page
+        allPlaces = [...response.data.places];
+        pagesFetched = 1;
+
+        // Check if there's a next page token
+        if (response.data.nextPageToken) {
+          pageToken = response.data.nextPageToken;
+          hasMore = true;
+        }
+
+        // Fetch additional pages if needed to reach maxResults
+        while (hasMore && allPlaces.length < maxResults && pagesFetched < 20) {
+          try {
+            // Wait a short delay before making the next request (API may require this)
+            await new Promise(resolve => setTimeout(resolve, 1000));
+
+            console.log(`Fetching page ${pagesFetched + 1} with token: ${pageToken}`);
+
+            // Make the next request with the page token
+            response = await fetchPlacesPage(pageToken);
+
+            if (response.status === 200 && response.data.places && Array.isArray(response.data.places)) {
+              // Add places from this page
+              allPlaces = [...allPlaces, ...response.data.places];
+              pagesFetched++;
+
+              console.log(`Retrieved page ${pagesFetched}, total places: ${allPlaces.length}`);
+
+              // Check if there's another page token
+              if (response.data.nextPageToken) {
+                pageToken = response.data.nextPageToken;
+                hasMore = true;
+              } else {
+                hasMore = false;
+              }
+            } else {
+              console.warn(`Failed to get next page: ${response.status}`);
+              hasMore = false;
+            }
+          } catch (error) {
+            const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+            console.error(`Error fetching next page: ${errorMessage}`);
+            hasMore = false;
+          }
+
+          // Stop if we've reached the maximum number of results
+          if (allPlaces.length >= maxResults) {
+            break;
+          }
+        }
+
+        console.log(`Total places retrieved: ${allPlaces.length} in ${pagesFetched} pages`);
+
+        // Transform the results into the desired format
+        const formattedResults = allPlaces.map((place) => {
+          // Extract available data from the place result
+          const {
+            id,
+            displayName,
+            formattedAddress,
+            location,
+            rating,
+            userRatingCount,
+            types,
+            photos,
+            nationalPhoneNumber,
+            internationalPhoneNumber,
+            websiteUri,
+            regularOpeningHours,
+            primaryType
+          } = place;
+
+          // Construct image URLs if photos are available
+          const imageUrl = photos ? photos.map((photo) => {
+            return {
+              name: photo.name,
+              widthPx: photo.widthPx,
+              heightPx: photo.heightPx,
+              authorAttributions: photo.authorAttributions,
+              googleMapsUri: photo.googleMapsUri
+            };
+          }) : [];
+
+          // Construct a link to Google Maps for this place
+          const detailLink = place.googleMapsUri || (id ?
+            `https://www.google.com/maps/place/?q=place_id:${id}` :
+            '');
+
+          // Get the name from displayName or fallback
+          const name = displayName?.text || 'Unnamed Place';
+
+          // Use formattedAddress as the address
+          const address = formattedAddress || '';
+
+          // Use types as description
+          const description = types?.join(', ') || '';
+
+          // Format opening hours if available
+          const hours = regularOpeningHours?.weekdayDescriptions?.join(', ') || '';
+
+          // Combine all text content for the snippet
+          const fullText = [name, address, description].filter(Boolean).join(' - ');
+
+          // Return the formatted place object
+          return {
+            name,
+            title: name,
+            ratings: rating || 0,
+            reviews: userRatingCount || 0,
+            description,
+            address,
+            phone: nationalPhoneNumber || internationalPhoneNumber || '',
+            website: websiteUri || '',
+            hours,
+            type: types || [],
+            primaryType: primaryType || '',
+            images: imageUrl,
+            link: detailLink,
+            snippet: fullText,
+            // Include coordinates if available
+            coordinates: location ? {
+              lat: location.latitude,
+              lng: location.longitude
+            } : null,
+            // Include the original data from Google Places API
+            originalData: place
+          };
+        });
+
+        // Limit results to maxResults if needed
+        const limitedResults = formattedResults.length > maxResults ?
+          formattedResults.slice(0, maxResults) :
+          formattedResults;
 
         return {
           content: [
             {
               type: "text",
-              text: `**Meerkats Google Places Search:**\\n\\n**Query:** ${args.query}\\n**Places Found:** ${places.length}\\n\\n**Places:**\\n${places.map(p => `${p.rank}. **${p.name}** (${p.type})\\n   Info: ${p.info}\\n`).join('\\n') || 'No places found'}\\n\\n**Note:** This is a basic places scraper. For production use, consider using Google Places API with proper API key.`
+              text: `**Meerkats Google Places Search:**\n\n**Query:** ${textQuery}\n**Places Found:** ${limitedResults.length}\n**Pages Fetched:** ${pagesFetched}\n\n${JSON.stringify({ places: limitedResults, total_results: limitedResults.length, pages_fetched: pagesFetched, has_more: hasMore }, null, 2)}`
             }
           ]
         };
       } catch (error) {
+        console.log(error);
         throw new Error(`Meerkats Google Places search failed: ${error.message}`);
       }
     }

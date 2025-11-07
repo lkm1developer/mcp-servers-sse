@@ -19,7 +19,16 @@ dotenv.config();
 // Initialize Supabase client
 const supabase = createClient(
   process.env.SUPABASE_URL,
-  process.env.SUPABASE_SERVICE_ROLE_KEY
+  process.env.SUPABASE_SERVICE_ROLE_KEY,
+  {
+    auth: {
+      autoRefreshToken: false,
+      persistSession: false,
+    },
+    db: {
+      schema: 'meerkats'
+    }
+  }
 );
 
 // Load configuration
@@ -164,9 +173,9 @@ const CACHE_TTL = 300000; // 5 minutes
 
 async function validateApiKey(apiKey, serverName, user_id, serverId) {
   try {
-      log('AUTH_FAILED', JSON.stringify({apiKey, serverName, user_id, serverId}));
+    log('AUTH_FAILED', JSON.stringify({ apiKey, serverName, user_id, serverId }));
     if (!apiKey) {
-      log('AUTH_FAILED', JSON.stringify({apiKey, serverName, user_id, serverId}));
+      log('AUTH_FAILED', JSON.stringify({ apiKey, serverName, user_id, serverId }));
       return { isValid: false, error: 'API key is required' };
     }
 
@@ -182,7 +191,7 @@ async function validateApiKey(apiKey, serverName, user_id, serverId) {
     if (user_id === 'system') {
       const conObj = await getSystemConnection([`${serverName.toUpperCase()}_API_KEY`]);
       const dbApiKey = conObj[`${serverName.toUpperCase()}_API_KEY`];
-      log('AUTH_FAILED', JSON.stringify({apiKey, serverName, user_id, serverId, dbApiKey}));
+      log('AUTH_FAILED', JSON.stringify({ apiKey, serverName, user_id, serverId, dbApiKey }));
       if (!dbApiKey || apiKey !== dbApiKey) {
         result = { isValid: false, error: 'Invalid or disabled API key' };
       } else {
@@ -321,7 +330,7 @@ app.post('/:serverName/mcp', async (req, res) => {
         sessionIdGenerator: () => randomUUID(),
         onsessioninitialized: (newSessionId) => {
           transport.sessionId = newSessionId;
-          transport.userApiKey = serverName==='meerkats-table' ? token: userApiKey ;
+          transport.userApiKey = serverName === 'meerkats-table' ? token : userApiKey;
           transport.user_id = apiKeyValidation.user_id;
 
           transports.set(newSessionId, transport);

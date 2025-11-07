@@ -51,7 +51,15 @@ export async function initDatabase() {
     }
 
     // Initialize Supabase client
-    supabase = createClient(supabaseUrl, supabaseKey);
+    supabase = createClient(supabaseUrl, supabaseKey, {
+        auth: {
+          autoRefreshToken: false,
+          persistSession: false,
+        },
+        db: {
+          schema: 'meerkats'
+        }
+      });
 
     // Test connection
     const { data, error } = await supabase
