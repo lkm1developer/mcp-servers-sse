@@ -173,7 +173,6 @@ const CACHE_TTL = 300000; // 5 minutes
 
 async function validateApiKey(apiKey, serverName, user_id, serverId) {
   try {
-    log('AUTH_FAILED', JSON.stringify({ apiKey, serverName, user_id, serverId }));
     if (!apiKey) {
       log('AUTH_FAILED', JSON.stringify({ apiKey, serverName, user_id, serverId }));
       return { isValid: false, error: 'API key is required' };
@@ -191,8 +190,9 @@ async function validateApiKey(apiKey, serverName, user_id, serverId) {
     if (user_id === 'system') {
       const conObj = await getSystemConnection([`${serverName.toUpperCase()}_API_KEY`]);
       const dbApiKey = conObj[`${serverName.toUpperCase()}_API_KEY`];
-      log('AUTH_FAILED', JSON.stringify({ apiKey, serverName, user_id, serverId, dbApiKey }));
+     
       if (!dbApiKey || apiKey !== dbApiKey) {
+         log('AUTH_FAILED22222', JSON.stringify({ apiKey, serverName, user_id, serverId, dbApiKey }));
         result = { isValid: false, error: 'Invalid or disabled API key' };
       } else {
         result = {
@@ -275,6 +275,7 @@ app.get('/health', (req, res) => {
 app.post('/:serverName/mcp', async (req, res) => {
   const { serverName } = req.params;
   try {
+    log(serverName, `Received request: ${JSON.stringify(req.body)}`);
     // Check if server adapter exists
     const serverAdapter = serverAdapters.get(serverName);
     if (!serverAdapter) {

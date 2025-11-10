@@ -3,6 +3,7 @@ import { z } from 'zod';
 import axios from 'axios';
 import * as dns from 'dns';
 import { promisify } from 'util';
+import { type } from 'os';
 
 /**
  * Meerkats MCP Server adapter for multi-MCP system
@@ -111,7 +112,7 @@ export async function createServerAdapter(serverPath, apiKeyParam = 'MEERKATS_AP
       title: "Meerkats Google Places",
       description: "Get Google Maps Places API data for a search query",
       inputSchema: {
-        googleApiKey: z.string().describe("Google Maps API key"),
+        googleApiKey: z.string().describe("Google Maps API key optional, if not provided system will use default key").optional(),
         query: z.string().describe("Search query for places")
       }
     }
@@ -809,7 +810,11 @@ chat your way to growth`
           content: [
             {
               type: "text",
-              text: `**Meerkats Google Places Search:**\n\n**Query:** ${textQuery}\n**Places Found:** ${limitedResults.length}\n**Pages Fetched:** ${pagesFetched}\n\n${JSON.stringify({ places: limitedResults, total_results: limitedResults.length, pages_fetched: pagesFetched, has_more: hasMore }, null, 2)}`
+              text: `**Meerkats Google Places Search:**\n\n**Query:** ${textQuery}\n**Places Found:** ${limitedResults.length}\n**Pages Fetched:** ${pagesFetched}\n\n`
+            }, 
+            {
+              type: "text",
+              text: JSON.stringify({ places: limitedResults, total_results: limitedResults.length, pages_fetched: pagesFetched, has_more: hasMore })
             }
           ]
         };
