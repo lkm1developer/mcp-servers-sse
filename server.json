@@ -180,6 +180,15 @@
       "directory": "./servers/slack",
       "enabled": true,
       "entryFile": "adapter.js"
+    },
+    "resend": {
+      "name": "Resend MCP Server",
+      "version": "1.0.0",
+      "description": "Resend integration for sending emails and managing audiences",
+      "directory": "./servers/resend",
+      "enabled": true,
+      "entryFile": "index.js",
+      "apiKeyParam": "RESEND_API_KEY"
     }
   },
   "global": {

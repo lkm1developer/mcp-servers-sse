@@ -16,7 +16,9 @@
       "Bash(PORT=8081 node multi-mcp-server-production.js)",
       "Read(//e/test/node_modules/smartlead-mcp-by-leadmagic/dist/scripts/**)",
       "Read(//e/test/node_modules/smartlead-mcp-by-leadmagic/dist/src/**)",
-      "Bash(mkdir:*)"
+      "Bash(mkdir:*)",
+      "Bash(git clone:*)",
+      "Bash(npm install)"
     ],
     "deny": [],
     "ask": []
