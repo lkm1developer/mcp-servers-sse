@@ -189,6 +189,15 @@
       "enabled": true,
       "entryFile": "index.js",
       "apiKeyParam": "RESEND_API_KEY"
+    },
+    "notion": {
+      "name": "Notion MCP Server",
+      "version": "1.0.0",
+      "description": "Notion integration for pages, databases, blocks, and workspace management",
+      "directory": "./servers/notion",
+      "enabled": true,
+      "entryFile": "index.js",
+      "apiKeyParam": "NOTION_TOKEN"
     }
   },
   "global": {
