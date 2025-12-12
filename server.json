@@ -198,6 +198,15 @@
       "enabled": true,
       "entryFile": "index.js",
       "apiKeyParam": "NOTION_TOKEN"
+    },
+    "apify": {
+      "name": "Apify MCP Server",
+      "version": "1.0.0",
+      "description": "Apify integration for LinkedIn scraping, job data, and actor execution",
+      "directory": "./servers/apify",
+      "enabled": true,
+      "entryFile": "adapter.js",
+      "apiKeyParam": "APIFY_API_TOKEN"
     }
   },
   "global": {
