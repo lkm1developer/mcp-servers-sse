@@ -18,7 +18,10 @@
       "Read(//e/test/node_modules/smartlead-mcp-by-leadmagic/dist/src/**)",
       "Bash(mkdir:*)",
       "Bash(git clone:*)",
-      "Bash(npm install)"
+      "Bash(npm install)",
+      "Bash(npm init:*)",
+      "Bash(npm install:*)",
+      "Bash(rm:*)"
     ],
     "deny": [],
     "ask": []
