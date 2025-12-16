@@ -81,7 +81,7 @@ export async function createServerAdapter(serverPath, apiKeyParam = 'APIFY_API_T
     const apifyMcpInternals = await import('@apify/actors-mcp-server/internals');
     toolCategories = apifyMcpInternals.toolCategories;
 
-    console.log('[Apify Adapter] Successfully imported tool categories');
+    // console.log('[Apify Adapter] Successfully imported tool categories');
   } catch (error) {
     console.error('[Apify Adapter] Failed to import from @apify/actors-mcp-server:', error.message);
     throw new Error(`Failed to load Apify MCP server package: ${error.message}`);
@@ -97,12 +97,9 @@ export async function createServerAdapter(serverPath, apiKeyParam = 'APIFY_API_T
     ...toolCategories.dev          // HTML skeleton extraction
   ];
 
-  console.log(`[Apify Adapter] Loaded ${allTools.length} tools from Apify MCP server`);
+  // console.log(`[Apify Adapter] Loaded ${allTools.length} tools from Apify MCP server`);
 
-  // Transform tool definitions to match our adapter format
-  // Convert JSON Schema to Zod schema for compatibility
-  const t = allTools.find(a=>a.name ==='call-actor')
-  console.log(JSON.stringify(t.inputSchema, null, 2))
+  
   const toolsDefinitions = allTools.map(tool => ({
     name: tool.name,
     title: tool.name,
@@ -194,7 +191,7 @@ export async function createServerAdapter(serverPath, apiKeyParam = 'APIFY_API_T
     };
   }
 
-  console.log(`[Apify Adapter] Created ${Object.keys(toolHandlers).length} tool handlers`);
+  // console.log(`[Apify Adapter] Created ${Object.keys(toolHandlers).length} tool handlers`);
 
   return {
     toolsDefinitions,

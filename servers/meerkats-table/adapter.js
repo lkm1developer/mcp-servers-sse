@@ -411,7 +411,7 @@ export async function createServerAdapter(serverPath, apiKeyParam = 'MEERKATS_TA
   // Configuration for Google Cloud Run production
   // const isLocal = process.env.NODE_ENV === 'development';
   const isLocal = false;
-  log(`Running in ${isLocal ? 'local' : 'production'} mode`);
+  // log(`Running in ${isLocal ? 'local' : 'production'} mode`);
   const API_BASE_URL = isLocal ? "http://localhost:5000/api/v1" : "https://prod-api-126608443486.us-central1.run.app/api/v1";
   const JOB_INSERTER_URL = process.env.JOB_INSERTER_URL || "https://j1.meerkats.ai";
   const API_VERSION = process.env.API_VERSION || "v1";

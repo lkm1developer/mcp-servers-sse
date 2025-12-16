@@ -10,26 +10,8 @@ import { isInitializeRequest } from '@modelcontextprotocol/sdk/types.js';
 import fs from 'fs';
 import path from 'path';
 import dotenv from 'dotenv';
-import { createClient } from '@supabase/supabase-js';
-import pkg from 'crypto-js';
-const { AES, enc } = pkg;
 
 dotenv.config();
-
-// Initialize Supabase client
-const supabase = createClient(
-  process.env.SUPABASE_URL,
-  process.env.SUPABASE_SERVICE_ROLE_KEY,
-  {
-    auth: {
-      autoRefreshToken: false,
-      persistSession: false,
-    },
-    db: {
-      schema: 'meerkats'
-    }
-  }
-);
 
 // Load configuration
 const configPath = path.join(process.cwd(), 'server.json');
@@ -43,30 +25,10 @@ try {
 
 const app = express();
 const port = process.env.SSE_PORT || 8009;
-const JWT_SECRET = process.env.JWT_SECRET;
 
-// Simple logging
-const LOG_FILE = path.join(process.cwd(), 'logs', 'multi-mcp-simple.log');
-const logsDir = path.dirname(LOG_FILE);
-
-try {
-  if (!fs.existsSync(logsDir)) {
-    fs.mkdirSync(logsDir, { recursive: true });
-  }
-} catch (error) {
-  console.error('❌ Cannot create logs directory:', error.message);
-}
-
+// Simple console logging for GCP Cloud Run
 export function log(serverName, message, data = null) {
-  const timestamp = new Date().toISOString();
-  const logEntry = `[${timestamp}] [${serverName}] ${message}${data ? '\\n' + JSON.stringify(data, null, 2) : ''}\\n`;
-
-  try {
-    console.log(`[${serverName}] ${message}`, data || '');
-    fs.appendFileSync(LOG_FILE, logEntry);
-  } catch (error) {
-    console.error(`[LOG-ERROR] Failed to write to log file: ${error.message}`);
-  }
+  console.log(`[${serverName}] ${message}`, data || '');
 }
 
 // Simple transport storage per server
@@ -127,119 +89,98 @@ async function loadServerAdapters() {
   log('MANAGER', `Loaded ${serverAdapters.size} server adapters`);
 }
 
-// Encryption/Decryption helper functions
-export const getEncryptionKey = () => {
-  return process.env.ENCRYPTION_KEY ?? 'ddsf%@#%#dfdfdfvbvdf546456dfcxgvdfgvfdg'; // Default for dev only
-};
-
-const decryptCredentialData = (encryptedData) => {
-  const encryptKey = getEncryptionKey();
-  const decryptedData = AES.decrypt(encryptedData, encryptKey);
-  try {
-    const plainDataObj = JSON.parse(decryptedData.toString(enc.Utf8));
-    return plainDataObj;
-  } catch (e) {
-    console.error(e);
-    throw new Error('Credentials could not be decrypted.');
+// JWT Secret helper
+const getJwtSecret = () => {
+  const secret = process.env.JWT_SECRET;
+  if (!secret) {
+    throw new Error('JWT_SECRET environment variable is required');
   }
+  return secret;
 };
 
-// Get system connection using Supabase
-export const getSystemConnection = async (keys) => {
-  let obj = {}
-  const { data: secrets, error } = await supabase
-    .from('connections')
-    .select('*')
-    .eq('is_system', true)
-    .eq('type', 'vault')
-    .in('name', keys)
-
-  if (error || !secrets) {
-    throw new AppError(404, 'Secret not found');
+// Server-to-Server API Key validation
+// The x-api-key header validates the calling server is authorized
+function validateServerApiKey(apiKey) {
+  if (!apiKey) {
+    log('AUTH', 'No x-api-key provided for server-to-server auth');
+    return { isValid: false, error: 'x-api-key header is required' };
   }
-  await Promise.all(secrets.map(async (secret) => {
-    if (secret.data) {
-      obj[secret.name] = decryptCredentialData(secret.data);
-    }
-  }))
 
-  return obj;
-};
+  const expectedApiKey = process.env.MCP_API_KEY;
+  if (!expectedApiKey) {
+    log('AUTH', 'MCP_API_KEY not configured in environment');
+    return { isValid: false, error: 'Server API key not configured' };
+  }
 
+  if (apiKey !== expectedApiKey) {
+    log('AUTH', 'Invalid server-to-server API key');
+    return { isValid: false, error: 'Invalid server API key' };
+  }
 
-// API Key validation with caching
-const apiKeyCache = new Map();
-const CACHE_TTL = 300000; // 5 minutes
+  log('AUTH', 'Valid server-to-server API key');
+  return { isValid: true };
+}
 
-async function validateApiKey(apiKey, serverName, user_id, serverId) {
+// Verify and decode the Bearer JWT token to extract user data
+// Token contains: { serverId, serverName, userId, apiKey/accessToken }
+function decryptBearerToken(token) {
   try {
-    if (!apiKey) {
-      log('AUTH_FAILED', JSON.stringify({ apiKey, serverName, user_id, serverId }));
-      return { isValid: false, error: 'API key is required' };
+    const jwtSecret = getJwtSecret();
+
+    // Verify and decode the JWT token
+    const decoded = jwt.verify(token, jwtSecret);
+
+    // Validate required fields
+    if (!decoded.serverId || !decoded.serverName || !decoded.userId) {
+      throw new Error('Missing required fields in JWT token');
     }
 
-    // Check cache first
-    const cacheKey = `${apiKey}-${user_id}-${serverId}`;
-    const cached = apiKeyCache.get(cacheKey);
-    if (cached && (Date.now() - cached.timestamp) < CACHE_TTL) {
-      return cached.result;
+    // apiKey or accessToken (for OAuth servers)
+    if (!decoded.apiKey && !decoded.accessToken) {
+      throw new Error('Missing apiKey or accessToken in JWT token');
     }
 
-    let result;
-
-    if (user_id === 'system') {
-      const conObj = await getSystemConnection([`${serverName.toUpperCase()}_API_KEY`]);
-      const dbApiKey = conObj[`${serverName.toUpperCase()}_API_KEY`];
-     
-      if (!dbApiKey || apiKey !== dbApiKey) {
-         log('AUTH_FAILED22222', JSON.stringify({ apiKey, serverName, user_id, serverId, dbApiKey }));
-        result = { isValid: false, error: 'Invalid or disabled API key' };
-      } else {
-        result = {
-          isValid: true,
-          user_id: 'system',
-          serverId: serverId,
-          rateLimit: null
-        };
-      }
-    } else {
-      // Query using Supabase
-      const { data: mcpServerUser, error } = await supabase
-        .from('mcp_server_users')
-        .select('*')
-        .eq('user_id', user_id)
-        .eq('server_id', serverId)
-        .eq('enabled', true)
-        .maybeSingle();
-
-      if (error || !mcpServerUser) {
-        result = { isValid: false, error: 'Invalid or disabled API key' };
-      } else {
-        const localApiKey = mcpServerUser.is_oauth ? mcpServerUser.oauth_data?.access_token : mcpServerUser.api_key;
-        // if (apiKey !== localApiKey) {
-        //   result = { isValid: false, error: 'Invalid or disabled API key 2' };
-        // } else {
-          result = {
-            isValid: true,
-            user_id: mcpServerUser.user_id,
-            serverId: mcpServerUser.server_id,
-            rateLimit: mcpServerUser.rate_limit
-          };
-        // }
-      }
-    }
-
-    // Cache the result
-    apiKeyCache.set(cacheKey, {
-      result,
-      timestamp: Date.now()
-    });
-
-    return result;
-
+    return decoded;
   } catch (error) {
-    log('AUTH', `API key validation error`, { error: error.message, serverName });
-    return { isValid: false, error: 'Database validation error' };
+    log('AUTH', 'Failed to verify Bearer token', { error: error.message });
+    throw new Error(`Invalid JWT token: ${error.message}`);
+  }
+}
+
+// Validate Bearer token and extract user data
+function validateBearerToken(authHeader, serverName) {
+  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    log('AUTH', `No Bearer token provided for ${serverName}`);
+    return { isValid: false, error: 'Bearer token is required', userData: null };
+  }
+
+  try {
+    const encryptedToken = authHeader.split(' ')[1];
+    const userData = decryptBearerToken(encryptedToken);
+
+    // Verify the serverName in token matches the requested server
+    if (userData.serverName !== serverName) {
+      log('AUTH', `Server name mismatch: token=${userData.serverName}, request=${serverName}`);
+      return {
+        isValid: false,
+        error: 'Token server name does not match request',
+        userData: null
+      };
+    }
+
+    log('AUTH', `Successfully validated Bearer token for ${serverName}, userId: ${userData.userId}`);
+    return {
+      isValid: true,
+      userData: {
+        serverId: userData.serverId,
+        serverName: userData.serverName,
+        userId: userData.userId,
+        userApiKey: userData.apiKey || userData.accessToken
+      }
+    };
+  } catch (error) {
+    log('AUTH', `Failed to validate Bearer token for ${serverName}`, { error: error.message });
+    return { isValid: false, error: error.message, userData: null };
   }
 }
 
@@ -250,7 +191,7 @@ app.use(cors({
   origin: true,
   credentials: true,
   methods: ['GET', 'POST', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'mcp-session-id']
+  allowedHeaders: ['Content-Type', 'Authorization', 'x-api-key', 'mcp-session-id']
 }));
 
 // Health check endpoint
@@ -261,10 +202,6 @@ app.get('/health', (req, res) => {
   res.json({
     status: 'healthy',
     timestamp: new Date().toISOString(),
-    version: '2.0.0-supabase',
-    transport: 'streamable-http',
-    auth_type: 'jwt',
-    database: 'supabase',
     servers: Array.from(serverAdapters.keys()),
     totalSessions,
     loadedServers: serverAdapters.size
@@ -295,47 +232,49 @@ app.post('/:serverName/mcp', async (req, res) => {
     if (sessionId && transports.has(sessionId)) {
       // Reuse existing transport
       transport = transports.get(sessionId);
+      transport.lastActive = Date.now(); // Update activity timestamp
       log(serverName, `Reusing existing session: ${sessionId}`);
     } else if (!sessionId && isInitializeRequest(req.body)) {
-      // New initialization request - validate JWT
+      // New initialization request - Two-layer authentication:
+      // 1. Server-to-Server: x-api-key validates the calling server
+      // 2. User Auth: Bearer token contains encrypted user data
+
+      const serverApiKey = req.headers['x-api-key'];
       const authHeader = req.headers.authorization;
-      if (!authHeader || !authHeader.startsWith('Bearer ')) {
+
+      // Validate server-to-server API key
+      const serverAuth = validateServerApiKey(serverApiKey);
+      if (!serverAuth.isValid) {
         return res.status(401).json({
           jsonrpc: '2.0',
-          error: { code: -32000, message: 'Bearer token required' }
+          error: { code: -32000, message: serverAuth.error }
         });
       }
 
-      const token = authHeader.split(' ')[1];
-      let decoded;
-      try {
-        decoded = jwt.verify(token, JWT_SECRET);
-      } catch (jwtError) {
-        return res.status(401).json({
-          jsonrpc: '2.0',
-          error: { code: -32000, message: 'Invalid JWT token' }
-        });
-      }
-      const { userId, serverId, apiKey: userApiKey, serverName } = decoded;
-      // Validate API key
-      const apiKeyValidation = await validateApiKey(userApiKey, serverName, userId, serverId);
-      if (!apiKeyValidation.isValid) {
+      // Validate and decrypt Bearer token for user data
+      const bearerAuth = validateBearerToken(authHeader, serverName);
+      if (!bearerAuth.isValid) {
         return res.status(403).json({
           jsonrpc: '2.0',
-          error: { code: -32000, message: apiKeyValidation.error }
+          error: { code: -32000, message: bearerAuth.error }
         });
       }
 
-      // Create new transport
+      const { userId, serverId, userApiKey } = bearerAuth.userData;
+
+      // Create new transport with user's API key
       transport = new StreamableHTTPServerTransport({
         sessionIdGenerator: () => randomUUID(),
         onsessioninitialized: (newSessionId) => {
           transport.sessionId = newSessionId;
-          transport.userApiKey = serverName === 'meerkats-table' ? token : userApiKey;
-          transport.user_id = apiKeyValidation.user_id;
+          // Store user data for use in tool handlers
+          transport.userApiKey = userApiKey;
+          transport.userId = userId;
+          transport.serverId = serverId;
+          transport.lastActive = Date.now(); // Track last activity
 
           transports.set(newSessionId, transport);
-          log(serverName, `New session initialized: ${newSessionId}`);
+          log(serverName, `New session initialized: ${newSessionId} for userId: ${userId}`);
         },
         enableDnsRebindingProtection: false
       });
@@ -343,9 +282,24 @@ app.post('/:serverName/mcp', async (req, res) => {
       // Clean up transport when closed
       transport.onclose = () => {
         if (transport.sessionId) {
-          log(serverName, `Session closed: ${transport.sessionId}`);
+          log(serverName, `Client disconnected - Session closed: ${transport.sessionId}, userId: ${transport.userId}`);
+
+          // Clean up the transport
           transports.delete(transport.sessionId);
+
+          // Optional: Perform additional cleanup here
+          // - Close any open file handles
+          // - Cancel ongoing operations
+          // - Release resources
+          // - Notify other services
+
+          log(serverName, `Session cleanup completed: ${transport.sessionId}`);
         }
+      };
+
+      // Additional: Detect connection errors
+      transport.onerror = (error) => {
+        log(serverName, `Transport error for session ${transport.sessionId}: ${error?.message || 'Unknown error'}`);
       };
 
       // CREATE FRESH MCP SERVER INSTANCE PER SESSION
@@ -373,7 +327,7 @@ app.post('/:serverName/mcp', async (req, res) => {
             }
 
             try {
-              const result = await handler(args, transport.userApiKey, transport.user_id);
+              const result = await handler(args, transport.userApiKey);
               log(serverName, `Tool completed: ${toolDef.name}`, { success: true });
               return result;
             } catch (error) {
@@ -415,6 +369,8 @@ const handleSessionRequest = async (req, res) => {
   const { serverName } = req.params;
   const sessionId = req.headers['mcp-session-id'];
 
+  log(serverName, `${req.method} request received for session: ${sessionId}`);
+
   if (!sessionId) {
     return res.status(400).json({
       jsonrpc: '2.0',
@@ -431,23 +387,34 @@ const handleSessionRequest = async (req, res) => {
   }
 
   const transport = transports.get(sessionId);
+  transport.lastActive = Date.now(); // Update activity timestamp
+
   await transport.handleRequest(req, res);
 };
 
 app.get('/:serverName/mcp', handleSessionRequest);
 app.delete('/:serverName/mcp', handleSessionRequest);
 
-// Simple cleanup every 5 minutes
+// Cleanup inactive sessions every 5 minutes
+const SESSION_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes
+
 setInterval(() => {
   let totalCleaned = 0;
+  const now = Date.now();
 
   for (const [serverName, transports] of serverTransports.entries()) {
     let cleaned = 0;
     for (const [sessionId, transport] of transports.entries()) {
       try {
-        if (!transport || transport.closed) {
+        // Check if transport is closed OR inactive for more than 5 minutes
+        const isInactive = transport.lastActive && (now - transport.lastActive) > SESSION_TIMEOUT_MS;
+
+        if (!transport || transport.closed || isInactive) {
           transports.delete(sessionId);
           cleaned++;
+          if (isInactive) {
+            log(serverName, `Session ${sessionId} timed out after 5 minutes of inactivity`);
+          }
         }
       } catch (error) {
         transports.delete(sessionId);
@@ -469,14 +436,13 @@ setInterval(() => {
 // Root endpoint
 app.get('/', (req, res) => {
   res.json({
-    name: 'Multi-MCP Simple Server (Supabase)',
-    version: '2.0.0-supabase',
+    name: 'Multi-MCP Simple Server',
+    version: '3.0.0-simple',
     status: 'running',
-    database: 'supabase',
     servers: Array.from(serverAdapters.keys()),
     endpoints: [
       'GET /health - Health check',
-      'POST /{serverName}/mcp - MCP server interaction',
+      'POST /{serverName}/mcp - MCP server interaction (requires x-api-key + Bearer token)',
       'GET /{serverName}/mcp - MCP SSE stream',
       'DELETE /{serverName}/mcp - Terminate MCP session'
     ],
@@ -511,14 +477,7 @@ process.on('SIGINT', () => shutdown('SIGINT'));
 // Start the server
 async function startServer() {
   try {
-    log('MAIN', 'Starting Multi-MCP Simple Server (Supabase)...');
-
-    // Test Supabase connection
-    const { data, error } = await supabase.from('mcp_servers').select('id').limit(1);
-    if (error) {
-      throw new Error(`Supabase connection failed: ${error.message}`);
-    }
-    log('MAIN', '✅ Supabase connected successfully');
+    log('MAIN', 'Starting Multi-MCP Simple Server...');
 
     // Load server adapters
     await loadServerAdapters();
@@ -526,9 +485,10 @@ async function startServer() {
 
     // Start HTTP server
     app.listen(port, '0.0.0.0', () => {
-      log('MAIN', `🚀 Multi-MCP Simple Server (Supabase) running on port ${port}`);
+      log('MAIN', `🚀 Multi-MCP Simple Server running on port ${port}`);
       log('MAIN', `📊 Health check: http://localhost:${port}/health`);
-      log('MAIN', `🔗 Database: Supabase PostgreSQL`);
+     
+      log('MAIN', `📦 Loaded servers: ${Array.from(serverAdapters.keys()).join(', ')}`);
     });
 
   } catch (error) {
