@@ -101,6 +101,8 @@ export async function createServerAdapter(serverPath, apiKeyParam = 'APIFY_API_T
 
   // Transform tool definitions to match our adapter format
   // Convert JSON Schema to Zod schema for compatibility
+  const t = allTools.find(a=>a.name ==='call-actor')
+  console.log(JSON.stringify(t.inputSchema, null, 2))
   const toolsDefinitions = allTools.map(tool => ({
     name: tool.name,
     title: tool.name,
@@ -110,6 +112,22 @@ export async function createServerAdapter(serverPath, apiKeyParam = 'APIFY_API_T
 
   // Create tool handlers that wrap the original tool calls
   const toolHandlers = {};
+
+  // Create a minimal mock MCP server instance for tools that need it
+  const mockApifyMcpServer = {
+    options: {
+      token: null, // Will be set per-call
+      allowUnauthMode: false,
+      skyfireMode: false,
+      setupSigintHandler: false
+    },
+    tools: new Map(),
+    server: null,
+    listToolNames: () => [],
+    listActorToolNames: () => [],
+    loadActorsAsTools: async () => [],
+    upsertTools: () => {}
+  };
 
   for (const tool of allTools) {
     toolHandlers[tool.name] = async (args, apiKey, userId) => {
@@ -121,6 +139,9 @@ export async function createServerAdapter(serverPath, apiKeyParam = 'APIFY_API_T
         // Create Apify client with the user's API key
         const apifyClient = new ApifyClient({ token: apiKey });
 
+        // Update mock server with current token
+        mockApifyMcpServer.options.token = apiKey;
+
         // Prepare the context that the tool expects
         const toolArgs = {
           args,
@@ -131,7 +152,7 @@ export async function createServerAdapter(serverPath, apiKeyParam = 'APIFY_API_T
             signal: null // No abort signal support for now
           },
           // These are needed by some internal tools
-          apifyMcpServer: null, // We don't have a full server instance
+          apifyMcpServer: mockApifyMcpServer, // Mock server instance
           mcpServer: null,
           userRentedActorIds: [],
           progressTracker: null
