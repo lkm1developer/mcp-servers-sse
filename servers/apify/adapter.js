@@ -86,6 +86,42 @@ export async function createServerAdapter(serverPath, apiKeyParam = 'APIFY_API_T
     console.error('[Apify Adapter] Failed to import from @apify/actors-mcp-server:', error.message);
     throw new Error(`Failed to load Apify MCP server package: ${error.message}`);
   }
+  const toolCall =toolCategories.actors.find(tool => tool.name === 'call-actor');
+  const linkedInTool = {
+    name: 'linkedin-scrapper',
+    title: 'Linkedin Scrapper',
+    description: 'Extract LinkedIn profile information',
+    inputSchema: {
+      "type": "object",
+      "properties": {
+        "linkedin_url": {
+          "type": "string",
+          "format": "uri",
+          "description": "Link to a LinkedIn profile or page",
+          "pattern": "^https?://(www\\.)?linkedin\\.com/.*$"
+        }
+      },
+      "required": ["linkedin_url"],
+      "additionalProperties": false
+    },
+    // Provide a custom call function instead of inheriting from toolCall
+    call: async (toolArgs) => {
+      // Transform the linkedin_url to the call-actor format and delegate
+      const callActorArgs = {
+        ...toolArgs,
+        args: {
+          actor: "harvestapi/linkedin-profile-scraper",
+          step: "call",
+          input: {
+            profileScraperMode: "Profile details no email ($4 per 1k)",
+            queries: [toolArgs.args.linkedin_url]
+          }
+        }
+      };
+      // Call the original call-actor tool
+      return await toolCall.call(callActorArgs);
+    }
+  }
 
   // Collect all tools from all categories
   const allTools = [
@@ -94,12 +130,13 @@ export async function createServerAdapter(serverPath, apiKeyParam = 'APIFY_API_T
     ...toolCategories.runs,         // Run management
     ...toolCategories.storage,      // Dataset and KV store access
     ...toolCategories.experimental, // Add tool dynamically
-    ...toolCategories.dev          // HTML skeleton extraction
+    ...toolCategories.dev         // HTML skeleton extraction
+
   ];
-
-  // console.log(`[Apify Adapter] Loaded ${allTools.length} tools from Apify MCP server`);
-
   
+  // console.log(`[Apify Adapter] Loaded ${allTools.length} tools from Apify MCP server`);
+  allTools.push(linkedInTool);
+
   const toolsDefinitions = allTools.map(tool => ({
     name: tool.name,
     title: tool.name,
@@ -123,7 +160,7 @@ export async function createServerAdapter(serverPath, apiKeyParam = 'APIFY_API_T
     listToolNames: () => [],
     listActorToolNames: () => [],
     loadActorsAsTools: async () => [],
-    upsertTools: () => {}
+    upsertTools: () => { }
   };
 
   for (const tool of allTools) {
@@ -131,21 +168,20 @@ export async function createServerAdapter(serverPath, apiKeyParam = 'APIFY_API_T
       if (!apiKey && tool.name !== 'search-apify-docs' && tool.name !== 'fetch-apify-docs') {
         throw new Error('Apify API token is required for this operation');
       }
-
+     
       try {
         // Create Apify client with the user's API key
         const apifyClient = new ApifyClient({ token: apiKey });
 
         // Update mock server with current token
         mockApifyMcpServer.options.token = apiKey;
-
         // Prepare the context that the tool expects
         const toolArgs = {
           args,
           apifyToken: apiKey,
           apifyClient,
           extra: {
-            sendNotification: async () => {}, // Stub for notifications
+            sendNotification: async () => { }, // Stub for notifications
             signal: null // No abort signal support for now
           },
           // These are needed by some internal tools
@@ -157,7 +193,6 @@ export async function createServerAdapter(serverPath, apiKeyParam = 'APIFY_API_T
 
         // Call the original tool handler
         const result = await tool.call(toolArgs);
-
         // Transform the result to our format if needed
         // Apify tools return { content: [...] } or { isError, content }
         if (result && result.content) {
