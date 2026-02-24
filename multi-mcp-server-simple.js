@@ -266,7 +266,7 @@ app.post('/:serverName/mcp', async (req, res) => {
       transport = new StreamableHTTPServerTransport({
         sessionIdGenerator: () => randomUUID(),
         onsessioninitialized: (newSessionId) => {
-          transport.sessionId = newSessionId;
+          // sessionId is already set internally by the transport (read-only getter)
           // Store user data for use in tool handlers
           transport.userApiKey = userApiKey;
           transport.userId = userId;

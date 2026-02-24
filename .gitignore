@@ -88,7 +88,6 @@ requests.log
 *.debug.log
 
 # IDE/Editor files
-.vscode/
 .idea/
 *.swp
 *.swo
@@ -134,3 +133,7 @@ server.local.json
 # Temporary files
 temp/
 tmp/
+temp_auto_push.bat
+temp_interactive_push.bat
+.gitignore
+branch_structure.json
